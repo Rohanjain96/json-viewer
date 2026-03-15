@@ -9,7 +9,7 @@ interface RawJSONPathResult {
 
 export function queryJSON(data: JSONValue, path: string): QueryResult {
   if (!path.startsWith("$")) {
-    return { error: "Path must start with $" };
+    return { type: "error", error: "Path must start with $" };
   }
 
   try {
@@ -31,9 +31,10 @@ export function queryJSON(data: JSONValue, path: string): QueryResult {
       };
     });
 
-    return { results };
+    return { type: "success", results };
   } catch (e) {
     return {
+      type: "error",
       error: e instanceof Error ? e.message : "Unknown error",
     };
   }

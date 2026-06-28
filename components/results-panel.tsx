@@ -1,16 +1,51 @@
 "use client";
+import { useEffect, useState } from "react";
 import { Settings } from "@/theme";
 import { QueryMatch, QueryResult } from "@/types/query";
 import { CopyButton } from "@/components/copy-button";
+import { stringifyAsync } from "@/utils/copy-async";
 
 interface Props {
     queryResult: QueryResult | null;
+    queryRunning?: boolean;
     resultView: string;
     setResultView: (v: string) => void;
     settings: Settings;
 }
 
-export function ResultsPanel({ queryResult, resultView, setResultView, settings }: Props) {
+export function ResultsPanel({ queryResult, queryRunning, resultView, setResultView, settings }: Props) {
+    // ── Async stringified output for the JSON view ────────────────────────────
+    const [jsonText, setJsonText] = useState<string>("");
+    const [stringifying, setStringifying] = useState(false);
+
+    const results: QueryMatch[] = queryResult && "results" in queryResult ? queryResult.results : [];
+
+    useEffect(() => {
+        if (resultView !== "json" || !results.length) {
+            setJsonText("");
+            return;
+        }
+        let cancelled = false;
+        setStringifying(true);
+        stringifyAsync(results.map(r => r.value), 2).then(str => {
+            if (!cancelled) {
+                setJsonText(str);
+                setStringifying(false);
+            }
+        });
+        return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queryResult, resultView]);
+
+    // ── Loading state — worker is still running ───────────────────────────────
+    if (queryRunning) return (
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 8, color: "var(--text-faint)", fontSize: "0.93em" }}>
+            <div style={{ width: 20, height: 20, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
+            <span style={{ fontFamily: "monospace" }}>Running query…</span>
+        </div>
+    );
+
+    // ── Empty state ───────────────────────────────────────────────────────────
     if (!queryResult) return (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-faint)", fontSize: "0.93em", flexDirection: "column", gap: 8 }}>
             <div style={{ fontSize: "2em" }}>⌥</div>
@@ -19,14 +54,6 @@ export function ResultsPanel({ queryResult, resultView, setResultView, settings 
     );
 
     const isError = "error" in queryResult;
-    const results: QueryMatch[] = "results" in queryResult ? queryResult.results : [];
-
-    const copyAllText = (): string => {
-        const r = "results" in queryResult ? (queryResult.results ?? []) : [];
-        if (resultView === "json") return JSON.stringify(r.map(x => x.value), null, 2);
-        if (resultView === "path") return r.map((x, i) => `${i + 1}. ${x.path}`).join("\n");
-        return ["#\tVALUE\tPATH", ...r.map((x, i) => `${i + 1}\t${JSON.stringify(x.value)}\t${x.path}`)].join("\n");
-    };
 
     return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
@@ -43,7 +70,7 @@ export function ResultsPanel({ queryResult, resultView, setResultView, settings 
                             </button>
                         ))}
                     </div>
-                    {!isError && results.length > 0 && <CopyButton text={copyAllText()} label="Copy All" size="sm" />}
+                    {!isError && results.length > 0 && <CopyButton value={results.map(r => r.value)} label="Copy All" size="sm" />}
                 </div>
             </div>
 
@@ -54,9 +81,16 @@ export function ResultsPanel({ queryResult, resultView, setResultView, settings 
                         ⚠ {queryResult.error}
                     </div>
                 ) : resultView === "json" ? (
-                    <pre style={{ color: "var(--text)", fontFamily: "monospace", fontSize: "0.93em", lineHeight: 1.7, whiteSpace: settings.wordWrap !== false ? "pre-wrap" : "pre", wordBreak: "break-word", margin: 0 }}>
-                        {JSON.stringify(results.map(r => r.value), null, 2)}
-                    </pre>
+                    stringifying ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--text-faint)", fontFamily: "monospace", fontSize: "0.86em" }}>
+                            <div style={{ width: 14, height: 14, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />
+                            Formatting…
+                        </div>
+                    ) : (
+                        <pre style={{ color: "var(--text)", fontFamily: "monospace", fontSize: "0.93em", lineHeight: 1.7, whiteSpace: settings.wordWrap !== false ? "pre-wrap" : "pre", wordBreak: "break-word", margin: 0 }}>
+                            {jsonText}
+                        </pre>
+                    )
                 ) : resultView === "path" ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                         {results.map((r, i) => (
@@ -95,7 +129,7 @@ export function ResultsPanel({ queryResult, resultView, setResultView, settings 
                                         <td style={{ padding: "6px 10px", color: "var(--node-str)", wordBreak: "break-all", verticalAlign: "top" }}>{JSON.stringify(r.value)}</td>
                                         <td style={{ padding: "6px 10px", color: "var(--text-dim)", wordBreak: "break-all", verticalAlign: "top" }}>{r.path}</td>
                                         <td style={{ padding: "6px 4px", verticalAlign: "top" }}>
-                                            <CopyButton text={JSON.stringify(r.value)} label="" size="xs" />
+                                            <CopyButton value={r.value} label="Copy" size="xs" />
                                         </td>
                                     </tr>
                                 ))}

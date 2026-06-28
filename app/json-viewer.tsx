@@ -17,8 +17,9 @@ import { NodeInspector } from "@/components/node-inspector";
 import { StatusBar } from "@/components/status-bar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { useCopyModal } from "@/components/clipboard";
-import { queryJSON } from "@/utils/json-query";
+import { queryAsync } from "@/utils/query-async";
 import { QueryExamplesDrawer } from "@/components/query-bar-examples";
+import { JsSandboxTab } from "@/components/tabs/js-sandbox";
 
 // ─── TABS ────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -26,10 +27,10 @@ const TABS = [
   { id: "explorer", label: "Explorer", icon: "{ }" },
   { id: "diff", label: "Diff", icon: "⇄" },
   { id: "builder", label: "Builder", icon: "⊞" },
+  { id: "sandbox", label: "JS Query", icon: "⚡" },
   { id: "settings", label: "Settings", icon: "⚙" },
 ];
 
-// ─── SELECTED NODE TYPE ───────────────────────────────────────────────────────
 interface SelectedNode {
   path: string;
   type: string;
@@ -43,8 +44,15 @@ export default function App() {
   const [, startTransition] = useTransition();
 
   // ── JSON state ──────────────────────────────────────────────────────────────
-  const [json, setJson] = useState<JSONValue>({});
-  const [jsonText, setJsonText] = useState("");
+  // FIX 1: Store the heavy parsed object in a ref — never in React state.
+  // Only a cheap version counter goes into state to trigger re-renders.
+  const jsonRef = useRef<JSONValue>({});
+  const [jsonVersion, setJsonVersion] = useState(0);
+
+  // Stable accessor — consumers read from the ref, not from state.
+  const getJson = useCallback(() => jsonRef.current, []);
+
+  // ── jsonText removed — PasteTab now owns its text internally via a ref ───────
 
   // ── Query state ─────────────────────────────────────────────────────────────
   const [query, setQuery] = useState("");
@@ -55,7 +63,12 @@ export default function App() {
   // ── Autocomplete state ──────────────────────────────────────────────────────
   const [acActive, setAcActive] = useState(false);
   const [acIndex, setAcIndex] = useState(-1);
-  const suggestions = useJsonPathSuggestions(json, acActive ? query : "");
+  // FIX 2: Pass ref value only when autocomplete is actually open, so the
+  // hook doesn't re-run traversal on every keystroke against a 5MB object.
+  const suggestions = useJsonPathSuggestions(
+    acActive ? jsonRef.current : {},
+    acActive ? query : ""
+  );
 
   // ── UI state ────────────────────────────────────────────────────────────────
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
@@ -64,6 +77,10 @@ export default function App() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showExamples, setShowExamples] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // FIX 3: Track a stable key for VisualQueryBuilder that does NOT stringify
+  // the json object. Just use the version counter.
+  const builderKey = jsonVersion;
 
   // ── Tree panel resize ────────────────────────────────────────────────────────
   const [treeWidth, setTreeWidth] = useState(isDesktop ? 420 : 270);
@@ -74,24 +91,36 @@ export default function App() {
   const pad = isMobile ? 12 : 20;
   const theme = THEMES[settings.theme] || THEMES.Dark;
 
-  // ── Run query ────────────────────────────────────────────────────────────────
-  const runQuery = useCallback((q = query) => {
-    setTimeout(() => {
-      const result = queryJSON(json, q);
-      setQueryResult(result);
-      setQueryHistory(h => [q, ...h.filter(x => x !== q)].slice(0, 8));
-      if (isMobile) setMobilePanel("results");
-    }, 0);
-  }, [json, query, isMobile]);
+  // ── Query running state ──────────────────────────────────────────────────────
+  const [queryRunning, setQueryRunning] = useState(false);
+  const latestQueryId = useRef(0);
+
+  // ── Run query — JSONPath runs in a worker, main thread never blocks ──────────
+  const runQuery = useCallback(async (q?: string) => {
+    const path = typeof q === "string" ? q : query;
+    const queryId = ++latestQueryId.current;
+    setQueryRunning(true);
+    setQueryResult(null);
+
+    const result = await queryAsync(jsonRef.current, path);
+
+    if (queryId !== latestQueryId.current) return; // stale response, discard
+    setQueryResult(result);
+    setQueryRunning(false);
+    setQueryHistory(h => [path, ...h.filter(x => x !== path)].slice(0, 8));
+    if (isMobile) setMobilePanel("results");
+  }, [query, isMobile]);
 
   // ── Apply JSON from paste tab ────────────────────────────────────────────────
   const handleApplyJSON = useCallback((parsed: JSONValue) => {
+    // FIX 5: Write to ref synchronously — zero React reconciliation cost.
+    jsonRef.current = parsed;
     setQueryResult(null);
     setSelectedNode(null);
-    setTimeout(() => {
-      setJson(parsed);
-      setTimeout(() => setActiveTab("explorer"), 50);
-    }, 0);
+    // Bump version to signal consumers that data changed, then switch tab.
+    // Two separate setStates batched in the same tick by React 18.
+    setJsonVersion(v => v + 1);
+    setTimeout(() => setActiveTab("explorer"), 50);
   }, []);
 
   // ── Tab switch with transition overlay ──────────────────────────────────────
@@ -129,13 +158,61 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [treeWidth]);
 
-  // ── Memoized tree nodes ──────────────────────────────────────────────────────
-  const treeNodes = useMemo(() => (
-    Object.entries(json as Record<string, JSONValue>).map(([k, v]) => (
-      <TreeNode key={k} nodeKey={k} value={v} depth={0} path="" isMobile={isMobile} settings={settings}
-        onNodeClick={node => { setSelectedNode(node); if (isMobile) setMobilePanel("results"); }} />
-    ))
-  ), [json, isMobile, settings]);
+  // ── Root-level tree virtualization ───────────────────────────────────────────
+  // Mirrors the visibleCount pattern inside TreeNode. Caps initial root render
+  // to 200 entries so a flat 10k-item array doesn't mount thousands of nodes.
+  const [rootVisibleCount, setRootVisibleCount] = useState(200);
+
+  // Reset pagination when new JSON is loaded
+  useEffect(() => { setRootVisibleCount(200); }, [jsonVersion]);
+
+  // ── Memoized tree root keys ──────────────────────────────────────────────────
+  // FIX 6: useMemo now depends on jsonVersion (cheap number) not the json object
+  // itself. This prevents React from diffing the entire 5MB structure to decide
+  // whether to re-run the memo.
+  const treeNodes = useMemo(() => {
+    const json = jsonRef.current;
+    const entries = Object.entries(json as Record<string, JSONValue>);
+    const visible = entries.slice(0, rootVisibleCount);
+    const remaining = entries.length - rootVisibleCount;
+
+    return (
+      <>
+        {visible.map(([k, v]) => (
+          <TreeNode
+            key={k}
+            nodeKey={Array.isArray(json) ? Number(k) : k}
+            value={v}
+            depth={0}
+            path=""
+            isMobile={isMobile}
+            settings={settings}
+            onNodeClick={node => {
+              setSelectedNode(node);
+              if (isMobile) setMobilePanel("results");
+            }}
+          />
+        ))}
+        {remaining > 0 && (
+          <div
+            onClick={() => setRootVisibleCount(c => Math.min(c + 200, entries.length))}
+            style={{
+              padding: "5px 8px 5px 26px",
+              color: "var(--accent)", fontSize: "0.79em",
+              fontFamily: "monospace", cursor: "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = "var(--surface)")}
+            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+          >
+            ▸ Show {Math.min(200, remaining)} more
+            <span style={{ color: "var(--text-faint)" }}>({remaining} remaining)</span>
+          </div>
+        )}
+      </>
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jsonVersion, rootVisibleCount, isMobile, settings]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
@@ -173,7 +250,7 @@ export default function App() {
       {isMobile && activeTab === "explorer" && (
         <div style={{ display: "flex", background: "var(--panel)", borderBottom: "1px solid var(--border-faint)", flexShrink: 0 }}>
           {[["tree", "{ } Tree"], ["results", "▶ Results"]].map(([id, label]) => (
-            <button key={id} onClick={() => setMobilePanel(id)}
+            <button key={id} onClick={() => setMobilePanel(id as string)}
               style={{ flex: 1, padding: "9px", background: "none", border: "none", borderBottom: mobilePanel === id ? "2px solid var(--accent)" : "2px solid transparent", color: mobilePanel === id ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em" }}>
               {label}
             </button>
@@ -198,7 +275,7 @@ export default function App() {
             <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>
               Import JSON
             </div>
-            <PasteTab jsonText={jsonText} setJsonText={setJsonText} onApply={handleApplyJSON} />
+            <PasteTab onApply={handleApplyJSON} />
           </div>
         )}
 
@@ -259,6 +336,7 @@ export default function App() {
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
                 <ResultsPanel
                   queryResult={queryResult}
+                  queryRunning={queryRunning}
                   resultView={resultView}
                   setResultView={setResultView}
                   settings={settings}
@@ -293,13 +371,21 @@ export default function App() {
                 <DiffViewer />
               </>
             )}
+            {activeTab === "sandbox" && (
+              <>
+                <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>JS Sandbox</div>
+                {/* FIX 7: Pass ref value directly — no stringify needed */}
+                <JsSandboxTab json={jsonRef.current} />
+              </>
+            )}
             {activeTab === "builder" && (
               <>
                 <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>Visual Query Builder</div>
+                {/* FIX 3 applied: key is now a cheap number, NOT JSON.stringify(json) */}
                 <VisualQueryBuilder
-                  key={JSON.stringify(json)}
+                  key={builderKey}
                   onQuery={q => { setQuery(q); setActiveTab("explorer"); runQuery(q); }}
-                  json={json}
+                  json={jsonRef.current}
                 />
               </>
             )}

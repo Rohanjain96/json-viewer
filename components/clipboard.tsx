@@ -1,8 +1,15 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { registerCopyModal } from "@/components/tree-node";
+import { stringifyAsync } from "@/utils/copy-async";
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+let _showCopyModal: ((text: string) => void) | null = null;
+
+export function registerCopyModalHandler(fn: (text: string) => void) {
+    _showCopyModal = fn;
+}
+
 export function execCommandCopy(text: string): boolean {
     try {
         const ta = document.createElement("textarea");
@@ -22,10 +29,21 @@ export function execCommandCopy(text: string): boolean {
 
 export function copyToClipboard(text: string) {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+        navigator.clipboard.writeText(text).catch(() => {
+            if (!execCommandCopy(text)) _showCopyModal?.(text);
+        });
         return;
     }
-    execCommandCopy(text);
+    if (!execCommandCopy(text)) _showCopyModal?.(text);
+}
+
+export async function copyValueToClipboard(value: unknown, indent = 2) {
+    try {
+        const str = await stringifyAsync(value, indent);
+        copyToClipboard(str);
+    } catch {
+        copyToClipboard(JSON.stringify(value, null, indent));
+    }
 }
 
 // ─── COPY MODAL ───────────────────────────────────────────────────────────────
@@ -73,10 +91,17 @@ function CopyModal({ text, onClose }: { text: string; onClose: () => void }) {
 
 export function useCopyModal() {
     const [modalText, setModalText] = useState<string | null>(null);
+
     useEffect(() => {
+        // register both — tree-node uses registerCopyModal, direct calls use registerCopyModalHandler
         registerCopyModal(setModalText);
-        return () => registerCopyModal(() => { });
+        registerCopyModalHandler(setModalText);
+        return () => {
+            registerCopyModal(() => { });
+            registerCopyModalHandler(() => { });
+        };
     }, []);
+
     return modalText
         ? <CopyModal text={modalText} onClose={() => setModalText(null)} />
         : null;

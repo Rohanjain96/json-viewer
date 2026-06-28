@@ -1,12 +1,18 @@
+import { JSONValue } from "@/types/json";
 import { JSONPath } from "jsonpath-plus";
 
 interface QueryRequest {
   id: number;
-  data: unknown;
+  data: JSONValue;
   path: string;
 }
 
 interface QueryMatch {
+  value: unknown;
+  path: string;
+}
+
+interface JSONPathResult {
   value: unknown;
   path: string;
 }
@@ -25,13 +31,11 @@ self.onmessage = (e: MessageEvent<QueryRequest>) => {
       json: data,
       resultType: "all",
       wrap: true,
-    }) as Array<{ value: unknown; path: string }>;
+    }) as unknown as JSONPathResult[];
 
     const results: QueryMatch[] = raw.map((r) => ({
       value: r.value,
-      path: r.path
-        .replace(/\['([^']+)'\]/g, ".$1")
-        .replace(/^\$\./, "$."),
+      path: r.path.replace(/\['([^']+)'\]/g, ".$1").replace(/^\$\./, "$."),
     }));
 
     self.postMessage({ id, type: "success", results });

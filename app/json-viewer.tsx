@@ -21,14 +21,71 @@ import { queryAsync } from "@/utils/query-async";
 import { QueryExamplesDrawer } from "@/components/query-bar-examples";
 import { JsSandboxTab } from "@/components/tabs/js-sandbox";
 
-// ─── TABS ────────────────────────────────────────────────────────────────────
+// ─── Inline tab icons (no external icon library required) ─────────────────
+const iconProps = {
+  width: 16,
+  height: 16,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "round" as const,
+  strokeLinejoin: "round" as const,
+};
+
+const UploadIcon = () => (
+  <svg {...iconProps}>
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
+const BracesIcon = () => (
+  <svg {...iconProps}>
+    <path d="M8 3H7a2 2 0 0 0-2 2v3a2 2 0 0 1-2 2 2 2 0 0 1 2 2v3a2 2 0 0 0 2 2h1" />
+    <path d="M16 3h1a2 2 0 0 1 2 2v3a2 2 0 0 0 2 2 2 2 0 0 0-2 2v3a2 2 0 0 1-2 2h-1" />
+  </svg>
+);
+
+const DiffIcon = () => (
+  <svg {...iconProps}>
+    <polyline points="17 1 21 5 17 9" />
+    <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+    <polyline points="7 23 3 19 7 15" />
+    <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+  </svg>
+);
+
+const BuilderIcon = () => (
+  <svg {...iconProps}>
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </svg>
+);
+
+const SandboxIcon = () => (
+  <svg {...iconProps}>
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+);
+
+const SettingsIcon = () => (
+  <svg {...iconProps}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
+
 const TABS = [
-  { id: "paste", label: "Import", icon: "⬆" },
-  { id: "explorer", label: "Explorer", icon: "{ }" },
-  { id: "diff", label: "Diff", icon: "⇄" },
-  { id: "builder", label: "Builder", icon: "⊞" },
-  { id: "sandbox", label: "JS Query", icon: "⚡" },
-  { id: "settings", label: "Settings", icon: "⚙" },
+  { id: "paste", label: "Import", icon: <UploadIcon /> },
+  { id: "explorer", label: "Explorer", icon: <BracesIcon /> },
+  { id: "diff", label: "Diff", icon: <DiffIcon /> },
+  { id: "builder", label: "Builder", icon: <BuilderIcon /> },
+  { id: "sandbox", label: "JS Query", icon: <SandboxIcon /> },
+  { id: "settings", label: "Settings", icon: <SettingsIcon /> },
 ];
 
 interface SelectedNode {
@@ -37,40 +94,34 @@ interface SelectedNode {
   value: unknown;
 }
 
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
   const { isMobile, isDesktop } = useBreakpoint();
   const copyModal = useCopyModal();
   const [, startTransition] = useTransition();
 
-  // ── JSON state ──────────────────────────────────────────────────────────────
-  // FIX 1: Store the heavy parsed object in a ref — never in React state.
+  // Heavy parsed JSON lives in a ref, never in React state.
   // Only a cheap version counter goes into state to trigger re-renders.
   const jsonRef = useRef<JSONValue>({});
   const [jsonVersion, setJsonVersion] = useState(0);
 
-  // Stable accessor — consumers read from the ref, not from state.
-  const getJson = useCallback(() => jsonRef.current, []);
+  const pasteTextRef = useRef("");
+  const getPasteText = useCallback(() => pasteTextRef.current, []);
+  const setPasteText = useCallback((t: string) => { pasteTextRef.current = t; }, []);
 
-  // ── jsonText removed — PasteTab now owns its text internally via a ref ───────
-
-  // ── Query state ─────────────────────────────────────────────────────────────
   const [query, setQuery] = useState("");
   const [queryHistory, setQueryHistory] = useState<string[]>([]);
   const [queryResult, setQueryResult] = useState<QueryResult | null>(null);
   const [resultView, setResultView] = useState("json");
 
-  // ── Autocomplete state ──────────────────────────────────────────────────────
   const [acActive, setAcActive] = useState(false);
   const [acIndex, setAcIndex] = useState(-1);
-  // FIX 2: Pass ref value only when autocomplete is actually open, so the
-  // hook doesn't re-run traversal on every keystroke against a 5MB object.
+  // Only pass the real ref/query into the hook when autocomplete is open,
+  // so it doesn't re-traverse a large object on every keystroke.
   const suggestions = useJsonPathSuggestions(
     acActive ? jsonRef.current : {},
     acActive ? query : ""
   );
 
-  // ── UI state ────────────────────────────────────────────────────────────────
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [activeTab, setActiveTab] = useState("paste");
   const [mobilePanel, setMobilePanel] = useState("tree");
@@ -78,11 +129,10 @@ export default function App() {
   const [showExamples, setShowExamples] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
-  // FIX 3: Track a stable key for VisualQueryBuilder that does NOT stringify
-  // the json object. Just use the version counter.
+  // Stable key for VisualQueryBuilder — the cheap version counter,
+  // not a stringified copy of the JSON.
   const builderKey = jsonVersion;
 
-  // ── Tree panel resize ────────────────────────────────────────────────────────
   const [treeWidth, setTreeWidth] = useState(isDesktop ? 420 : 270);
   const dragging = useRef(false);
   const dragStartX = useRef(0);
@@ -91,11 +141,9 @@ export default function App() {
   const pad = isMobile ? 12 : 20;
   const theme = THEMES[settings.theme] || THEMES.Dark;
 
-  // ── Query running state ──────────────────────────────────────────────────────
   const [queryRunning, setQueryRunning] = useState(false);
   const latestQueryId = useRef(0);
 
-  // ── Run query — JSONPath runs in a worker, main thread never blocks ──────────
   const runQuery = useCallback(async (q?: string) => {
     const path = typeof q === "string" ? q : query;
     const queryId = ++latestQueryId.current;
@@ -111,19 +159,14 @@ export default function App() {
     if (isMobile) setMobilePanel("results");
   }, [query, isMobile]);
 
-  // ── Apply JSON from paste tab ────────────────────────────────────────────────
   const handleApplyJSON = useCallback((parsed: JSONValue) => {
-    // FIX 5: Write to ref synchronously — zero React reconciliation cost.
     jsonRef.current = parsed;
     setQueryResult(null);
     setSelectedNode(null);
-    // Bump version to signal consumers that data changed, then switch tab.
-    // Two separate setStates batched in the same tick by React 18.
     setJsonVersion(v => v + 1);
     setTimeout(() => setActiveTab("explorer"), 50);
   }, []);
 
-  // ── Tab switch with transition overlay ──────────────────────────────────────
   const switchTab = useCallback((tabId: string) => {
     if (activeTab === tabId) return;
     setIsTransitioning(true);
@@ -136,7 +179,6 @@ export default function App() {
     }, 0);
   }, [activeTab, startTransition]);
 
-  // ── Drag handle ──────────────────────────────────────────────────────────────
   const onDragStart = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
     dragStartX.current = e.clientX;
@@ -158,18 +200,12 @@ export default function App() {
     window.addEventListener("mouseup", onUp);
   }, [treeWidth]);
 
-  // ── Root-level tree virtualization ───────────────────────────────────────────
-  // Mirrors the visibleCount pattern inside TreeNode. Caps initial root render
-  // to 200 entries so a flat 10k-item array doesn't mount thousands of nodes.
+  // Caps initial root render to 200 entries so a flat 10k-item array
+  // doesn't mount thousands of nodes at once.
   const [rootVisibleCount, setRootVisibleCount] = useState(200);
 
-  // Reset pagination when new JSON is loaded
   useEffect(() => { setRootVisibleCount(200); }, [jsonVersion]);
 
-  // ── Memoized tree root keys ──────────────────────────────────────────────────
-  // FIX 6: useMemo now depends on jsonVersion (cheap number) not the json object
-  // itself. This prevents React from diffing the entire 5MB structure to decide
-  // whether to re-run the memo.
   const treeNodes = useMemo(() => {
     const json = jsonRef.current;
     const entries = Object.entries(json as Record<string, JSONValue>);
@@ -211,10 +247,9 @@ export default function App() {
         )}
       </>
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonVersion, rootVisibleCount, isMobile, settings]);
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div style={{ height: "100vh", background: theme.bg, color: theme.text, fontFamily: "'JetBrains Mono','Fira Code',monospace", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {copyModal}
@@ -229,7 +264,6 @@ export default function App() {
         onSwitchTab={switchTab}
       />
 
-      {/* Query bar — explorer only */}
       {activeTab === "explorer" && (
         <QueryBar
           query={query}
@@ -246,7 +280,6 @@ export default function App() {
         />
       )}
 
-      {/* Mobile tree/results switcher */}
       {isMobile && activeTab === "explorer" && (
         <div style={{ display: "flex", background: "var(--panel)", borderBottom: "1px solid var(--border-faint)", flexShrink: 0 }}>
           {[["tree", "{ } Tree"], ["results", "▶ Results"]].map(([id, label]) => (
@@ -258,10 +291,8 @@ export default function App() {
         </div>
       )}
 
-      {/* ── MAIN WORKSPACE ── */}
       <div style={{ flex: 1, overflow: "hidden", display: "flex", minHeight: 0, position: "relative" }}>
 
-        {/* Transition overlay */}
         {isTransitioning && (
           <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
             <div style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
@@ -269,24 +300,24 @@ export default function App() {
           </div>
         )}
 
-        {/* ── IMPORT TAB ── */}
         {activeTab === "paste" && (
           <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
             <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>
               Import JSON
             </div>
-            <PasteTab onApply={handleApplyJSON} />
+            <PasteTab
+              onApply={handleApplyJSON}
+              getPasteText={getPasteText}
+              setPasteText={setPasteText}
+            />
           </div>
         )}
 
-        {/* ── EXPLORER TAB ── */}
         {activeTab === "explorer" && (
           <>
-            {/* Left panel: tree + examples drawer + history */}
             {(!isMobile || mobilePanel === "tree") && (
               <div style={{ width: isMobile ? "100%" : treeWidth, display: "flex", flexDirection: "column", flexShrink: 0, minWidth: isMobile ? "100%" : 200, overflow: "hidden" }}>
 
-                {/* Tree */}
                 <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
                   <div style={{ padding: `12px ${pad}px 8px`, color: "var(--text-dim)", fontSize: "0.72em", letterSpacing: 2, flexShrink: 0, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span>JSON TREE</span>
@@ -297,14 +328,12 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Examples drawer */}
                 <QueryExamplesDrawer
                   open={showExamples}
                   onToggle={() => setShowExamples(s => !s)}
                   onSelectExample={q => { setQuery(q); runQuery(q); }}
                 />
 
-                {/* Query history */}
                 {!isMobile && queryHistory.length > 0 && (
                   <div style={{ borderTop: "1px solid var(--border-faint)", padding: "6px 10px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flexShrink: 0, background: "var(--panel)" }}>
                     <span style={{ color: "var(--text-faint)", fontSize: "0.64em", letterSpacing: 1.5, fontWeight: 600, fontFamily: "monospace" }}>HISTORY</span>
@@ -319,7 +348,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Drag handle */}
             {!isMobile && (
               <div onMouseDown={onDragStart}
                 style={{ width: 6, flexShrink: 0, cursor: "col-resize", background: "linear-gradient(to right, var(--border-faint), var(--border), var(--border-faint))", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", transition: "background 0.15s", position: "relative", zIndex: 10 }}
@@ -331,7 +359,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Right panel: results + inspector */}
             {(!isMobile || mobilePanel === "results") && (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
                 <ResultsPanel
@@ -362,7 +389,6 @@ export default function App() {
           </>
         )}
 
-        {/* ── OTHER TABS ── */}
         {!["paste", "explorer"].includes(activeTab) && (
           <div style={{ flex: 1, padding: pad, overflowY: "auto", minWidth: 0 }}>
             {activeTab === "diff" && (
@@ -374,14 +400,12 @@ export default function App() {
             {activeTab === "sandbox" && (
               <>
                 <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>JS Sandbox</div>
-                {/* FIX 7: Pass ref value directly — no stringify needed */}
                 <JsSandboxTab json={jsonRef.current} />
               </>
             )}
             {activeTab === "builder" && (
               <>
                 <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>Visual Query Builder</div>
-                {/* FIX 3 applied: key is now a cheap number, NOT JSON.stringify(json) */}
                 <VisualQueryBuilder
                   key={builderKey}
                   onQuery={q => { setQuery(q); setActiveTab("explorer"); runQuery(q); }}
@@ -399,7 +423,6 @@ export default function App() {
         )}
       </div>
 
-      {/* Status bar — desktop */}
       {!isMobile && (
         <StatusBar
           activeTab={activeTab}
@@ -408,7 +431,6 @@ export default function App() {
         />
       )}
 
-      {/* Mobile bottom nav */}
       {isMobile && (
         <MobileBottomNav
           tabs={TABS}

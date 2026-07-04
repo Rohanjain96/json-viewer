@@ -9,30 +9,36 @@ import { VirtualTextView } from "../virtual-text-view";
 
 interface Props {
     onApply: (data: JSONValue) => void;
+    getPasteText: () => string;
+    setPasteText: (text: string) => void;
 }
 
 const LARGE_THRESHOLD = 50_000;
 
-// Guarantee browser paints before heavy work.
-// rAF alone isn't enough — structured-clone of 5MB can still block before
-// the frame is committed. Two yielding steps (rAF + setTimeout) ensure paint.
 function yieldToBrowser(): Promise<void> {
     return new Promise(resolve =>
         requestAnimationFrame(() => setTimeout(resolve, 0))
     );
 }
 
-export function PasteTab({ onApply }: Props) {
+function sizeLabel(text: string) {
+    const bytes = new Blob([text]).size;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+export function PasteTab({ onApply, getPasteText, setPasteText }: Props) {
     const { isMobile } = useBreakpoint();
 
-    // The raw text never enters React state — lives in a ref.
-    // Only cheap derived values (charCount, isLarge, etc.) are state.
-    const textRef = useRef("");
+    const textRef = useRef(getPasteText());
 
-    const [isLarge, setIsLarge] = useState(false);
+    const [textVersion, setTextVersion] = useState(0);
+
+    const [isLarge, setIsLarge] = useState(() => textRef.current.length > LARGE_THRESHOLD);
     const [forceEdit, setForceEdit] = useState(false);
-    const [charCount, setCharCount] = useState(0);
-    const [fileSizeLabel, setFileSizeLabel] = useState("");
+    const [charCount, setCharCount] = useState(() => textRef.current.length);
+    const [fileSizeLabel, setFileSizeLabel] = useState(() => sizeLabel(textRef.current));
     const [error, setError] = useState("");
     const [success, setSuccess] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -46,15 +52,22 @@ export function PasteTab({ onApply }: Props) {
         setIsLarge(large);
         if (!large) setForceEdit(false);
         setCharCount(text.length);
-        const bytes = new Blob([text]).size;
-        if (bytes < 1024) setFileSizeLabel(`${bytes} B`);
-        else if (bytes < 1024 * 1024) setFileSizeLabel(`${(bytes / 1024).toFixed(1)} KB`);
-        else setFileSizeLabel(`${(bytes / (1024 * 1024)).toFixed(2)} MB`);
+        setFileSizeLabel(sizeLabel(text));
     };
 
     const setText = (text: string) => {
         textRef.current = text;
+        setPasteText(text);
         updateMeta(text);
+    };
+
+    // Wholesale replacement (demo data, file load, clear). Bumps textVersion
+    // so the uncontrolled input remounts and shows the new defaultValue.
+    const replaceText = (text: string) => {
+        textRef.current = text;
+        setPasteText(text);
+        updateMeta(text);
+        setTextVersion(v => v + 1);
     };
 
     const handleApply = async () => {
@@ -62,14 +75,13 @@ export function PasteTab({ onApply }: Props) {
         if (!text.trim()) return;
         setLoading(true);
         setError("");
-        // Yield two ticks so React paints the spinner before structured-clone blocks
         await yieldToBrowser();
         try {
             const parsed = await parseAsync(text) as JSONValue;
             setError("");
             setSuccess(true);
             setTimeout(() => setSuccess(false), 2000);
-            onApply(parsed);
+            onApply(parsed); // bumps jsonVersion in App — text itself is untouched
         } catch (e) {
             setError(`Invalid JSON: ${e instanceof Error ? e.message : "Parse error"}`);
         } finally {
@@ -83,7 +95,7 @@ export function PasteTab({ onApply }: Props) {
         setError("");
         await yieldToBrowser();
         const str = await stringifyAsync(sample, 2);
-        setText(str);
+        replaceText(str);
         setLoading(false);
     };
 
@@ -103,7 +115,7 @@ export function PasteTab({ onApply }: Props) {
                 setLoading(false);
                 return;
             }
-            setText(text);
+            replaceText(text);
             setFileName(file.name);
             try {
                 await parseAsync(text);
@@ -128,6 +140,55 @@ export function PasteTab({ onApply }: Props) {
         loadFileText(e.dataTransfer.files?.[0]);
     };
 
+    const handlePasteBlur = async (text: string) => {
+        setFileName("");
+        setError("");
+
+        const isHeavy = text.length > LARGE_THRESHOLD || charCount > LARGE_THRESHOLD;
+        if (!isHeavy) {
+            setText(text);
+            return;
+        }
+
+        setLoading(true);
+        await yieldToBrowser(); // let the spinner actually paint before the heavy work
+        setText(text);
+        setLoading(false);
+    };
+
+    const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+        const pasted = e.clipboardData.getData("text");
+        const el = e.currentTarget;
+        const selLen = el.selectionEnd - el.selectionStart;
+        const prospectiveLen = el.value.length - selLen + pasted.length;
+
+        // Small paste: let the browser handle it natively, instantly.
+        // No lag, no need for a spinner.
+        if (prospectiveLen <= LARGE_THRESHOLD && charCount <= LARGE_THRESHOLD) {
+            return;
+        }
+
+        // Large paste: take over entirely.
+        e.preventDefault();
+        setFileName("");
+        setError("");
+        setLoading(true);
+        await yieldToBrowser(); // let the spinner actually paint first
+
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const next = el.value.slice(0, start) + pasted + el.value.slice(end);
+
+        setText(next);
+        if (document.body.contains(el)) {
+            el.value = next;
+            const caret = start + pasted.length;
+            el.selectionStart = el.selectionEnd = caret;
+        }
+
+        setLoading(false);
+    };
+
     const btnBase: React.CSSProperties = {
         borderRadius: 6, cursor: "pointer", fontFamily: "monospace",
         fontSize: "0.86em", border: "1px solid var(--border)",
@@ -146,7 +207,6 @@ export function PasteTab({ onApply }: Props) {
                 style={{ display: "none" }}
             />
 
-            {/* Toolbar */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                 <button
                     onClick={handleApply}
@@ -189,7 +249,7 @@ export function PasteTab({ onApply }: Props) {
                 </button>
 
                 <button
-                    onClick={() => { setText(""); setFileName(""); setError(""); }}
+                    onClick={() => { replaceText(""); setFileName(""); setError(""); }}
                     disabled={loading}
                     style={{ ...btnBase, color: "var(--text-faint)", opacity: loading ? 0.5 : 1 }}
                 >
@@ -215,21 +275,18 @@ export function PasteTab({ onApply }: Props) {
                 </div>
             </div>
 
-            {/* Loading bar */}
             {loading && (
                 <div style={{ height: 2, background: "var(--border-faint)", borderRadius: 1, overflow: "hidden" }}>
                     <div style={{ height: "100%", width: "40%", background: "var(--accent)", borderRadius: 1, animation: "slideProgress 1s ease-in-out infinite alternate" }} />
                 </div>
             )}
 
-            {/* Error */}
             {error && (
                 <div style={{ background: "var(--danger)", border: "1px solid var(--danger-border)", borderRadius: 6, padding: "8px 12px", color: "var(--btn-danger)", fontSize: "0.86em", fontFamily: "monospace" }}>
                     ⚠ {error}
                 </div>
             )}
 
-            {/* Editor area */}
             <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
@@ -238,20 +295,29 @@ export function PasteTab({ onApply }: Props) {
             >
                 {isLarge ? (
                     <VirtualTextView
+                        key={textVersion}
                         text={textRef.current}
                         onEdit={() => setForceEdit(true)}
                         onDoneEdit={() => setForceEdit(false)}
                         forceEdit={forceEdit}
-                        onChange={(t) => { setText(t); setFileName(""); setError(""); }}
+                        onChange={async (t) => {
+                            setFileName("");
+                            setError("");
+                            setLoading(true);
+                            await yieldToBrowser();
+                            setText(t);
+                            setLoading(false);
+                        }}
                         dragOver={dragOver}
                         error={error}
                         loading={loading}
                     />
                 ) : (
                     <textarea
-                        key={charCount === 0 ? "empty" : "filled"}
+                        key={textVersion}
                         defaultValue={textRef.current}
-                        onBlur={e => { setText(e.target.value); setFileName(""); setError(""); }}
+                        onPaste={handlePaste}
+                        onBlur={e => { handlePasteBlur(e.target.value) }}
                         placeholder={"Paste your JSON here, or drag & drop a .json file...\n\nExample:\n{\n  \"name\": \"Alice\",\n  \"age\": 30\n}"}
                         spellCheck={false}
                         disabled={loading}
@@ -297,7 +363,7 @@ export function PasteTab({ onApply }: Props) {
             `}</style>
 
             <div style={{ color: "var(--text-faint)", fontSize: "0.72em", fontFamily: "monospace" }}>
-                Tip: Click "✎ Edit" to modify · "✓ Done" to save · then Apply JSON →
+                Tip: Click ✎ Edit to modify · ✓ Done to save · then Apply JSON →
             </div>
         </div>
     );

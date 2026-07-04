@@ -1,9 +1,10 @@
 "use client";
+import { ReactNode } from "react";
 
 interface Tab {
     id: string;
     label: string;
-    icon: string;
+    icon: ReactNode;
 }
 
 interface Props {
@@ -42,8 +43,8 @@ export function TopBar({ tabs, activeTab, isMobile, pad, onSwitchTab }: Props) {
                         return (
                             <button key={t.id}
                                 onClick={() => onSwitchTab(t.id)}
-                                style={{ padding: "0 18px", height: "100%", background: isActive ? "var(--accent-bg)" : "none", border: "none", flexShrink: 0, borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent", borderTop: "2px solid transparent", color: isActive ? "var(--text)" : "var(--text-dim)", cursor: "pointer", fontFamily: "'Space Grotesk', monospace", fontSize: "0.93em", fontWeight: isActive ? 600 : 400, letterSpacing: 0.3, whiteSpace: "nowrap", transition: "all 0.15s" }}>
-                                <span style={{ marginRight: 6, opacity: 0.7 }}>{t.icon}</span>{t.label}
+                                style={{ padding: "0 18px", height: "100%", background: isActive ? "var(--accent-bg)" : "none", border: "none", flexShrink: 0, borderBottom: isActive ? "2px solid var(--accent)" : "2px solid transparent", borderTop: "2px solid transparent", color: isActive ? "var(--text)" : "var(--text-dim)", cursor: "pointer", fontFamily: "'Space Grotesk', monospace", fontSize: "0.93em", fontWeight: isActive ? 600 : 400, letterSpacing: 0.3, whiteSpace: "nowrap", transition: "all 0.15s", display: "inline-flex", alignItems: "center" }}>
+                                <span style={{ marginRight: 6, opacity: 0.7, display: "inline-flex", alignItems: "center" }}>{t.icon}</span>{t.label}
                             </button>
                         );
                     })}

@@ -4,6 +4,7 @@ import { useBreakpoint } from "@/hooks/use-breakpoints";
 import { TreeNode } from "@/components/tree-node";
 import { DiffViewer } from "@/components/tabs/diff-viewer";
 import { PasteTab } from "@/components/tabs/paste-tab";
+import { ApiFetchTab } from "@/components/tabs/api-fetch-tab";
 import { SettingsPanel } from "@/components/tabs/settings-panel";
 import { VisualQueryBuilder } from "@/components/tabs/visual-query-builder";
 import { buildThemeStyle, DEFAULT_SETTINGS, Settings, THEMES } from "@/theme";
@@ -38,6 +39,14 @@ const UploadIcon = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
     <polyline points="17 8 12 3 7 8" />
     <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
+const ApiIcon = () => (
+  <svg {...iconProps}>
+    <circle cx="12" cy="12" r="10" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
   </svg>
 );
 
@@ -81,6 +90,7 @@ const SettingsIcon = () => (
 
 const TABS = [
   { id: "paste", label: "Import", icon: <UploadIcon /> },
+  { id: "api", label: "API", icon: <ApiIcon /> },
   { id: "explorer", label: "Explorer", icon: <BracesIcon /> },
   { id: "diff", label: "Diff", icon: <DiffIcon /> },
   { id: "builder", label: "Builder", icon: <BuilderIcon /> },
@@ -313,6 +323,22 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === "api" && (
+          <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+            <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>
+              API Fetch
+            </div>
+            <ApiFetchTab
+              onLoadToImport={(text) => {
+                // Push fetched response text into the shared paste ref, then
+                // switch to Import so the user can edit/fix it before applying.
+                setPasteText(text);
+                switchTab("paste");
+              }}
+            />
+          </div>
+        )}
+
         {activeTab === "explorer" && (
           <>
             {(!isMobile || mobilePanel === "tree") && (
@@ -389,7 +415,7 @@ export default function App() {
           </>
         )}
 
-        {!["paste", "explorer"].includes(activeTab) && (
+        {!["paste", "api", "explorer"].includes(activeTab) && (
           <div style={{ flex: 1, padding: pad, overflowY: "auto", minWidth: 0 }}>
             {activeTab === "diff" && (
               <>

@@ -11,14 +11,9 @@ interface Header { key: string; value: string; enabled: boolean; }
 interface Param { key: string; value: string; enabled: boolean; }
 
 interface FetchResult {
-    ok: boolean;
-    status: number;
-    statusText: string;
-    headers: Record<string, string>;
-    data: JSONValue;
-    rawText: string;
-    duration: number;
-    size: string;
+    ok: boolean; status: number; statusText: string;
+    headers: Record<string, string>; data: JSONValue; rawText: string;
+    duration: number; size: string;
 }
 
 const METHODS: Method[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
@@ -27,14 +22,18 @@ const METHOD_COLORS: Record<Method, string> = {
     PUT: "var(--accent)", PATCH: "var(--node-num)", DELETE: "var(--btn-danger)",
 };
 
+const COMMON_HEADERS = [
+    "Content-Type", "Authorization", "Accept", "Accept-Language", "Accept-Encoding",
+    "Cache-Control", "User-Agent", "X-API-Key", "X-Requested-With", "Origin",
+    "Referer", "If-None-Match", "If-Modified-Since", "X-Request-ID", "X-Client-Version",
+];
+
 const emptyRow = (): Header => ({ key: "", value: "", enabled: true });
 
 function buildUrl(base: string, params: Param[]): string {
     const active = params.filter(p => p.enabled && p.key.trim());
     if (!active.length) return base;
-    const qs = active.map(p =>
-        `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`
-    ).join("&");
+    const qs = active.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join("&");
     return `${base}${base.includes("?") ? "&" : "?"}${qs}`;
 }
 
@@ -50,13 +49,10 @@ function statusColor(s: number) {
     return "var(--btn-danger)";
 }
 
-// ── KeyValueEditor ─────────────────────────────────────────────────────────
 function KeyValueEditor({
-    rows, onChange, placeholder = ["Key", "Value"],
+    rows, onChange, placeholder = ["Key", "Value"], suggestKeys = false,
 }: {
-    rows: Header[];
-    onChange: (rows: Header[]) => void;
-    placeholder?: [string, string];
+    rows: Header[]; onChange: (rows: Header[]) => void; placeholder?: [string, string]; suggestKeys?: boolean;
 }) {
     const update = (i: number, field: keyof Header, val: string | boolean) => {
         const next = rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r);
@@ -68,18 +64,26 @@ function KeyValueEditor({
         onChange(rows.filter((_, idx) => idx !== i));
     };
     return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {suggestKeys && (
+                <datalist id="header-suggestions">
+                    {COMMON_HEADERS.map(h => <option key={h} value={h} />)}
+                </datalist>
+            )}
             {rows.map((row, i) => (
-                <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input type="checkbox" checked={row.enabled}
-                        onChange={e => update(i, "enabled", e.target.checked)}
+                <div key={i} style={{ display: "flex", gap: 7, alignItems: "center" }}>
+                    <input type="checkbox" checked={row.enabled} onChange={e => update(i, "enabled", e.target.checked)}
                         style={{ flexShrink: 0, accentColor: "var(--accent)" }} />
-                    <input value={row.key} onChange={e => update(i, "key", e.target.value)}
-                        placeholder={placeholder[0]} style={iStyle} />
-                    <input value={row.value} onChange={e => update(i, "value", e.target.value)}
-                        placeholder={placeholder[1]} style={{ ...iStyle, flex: 2 }} />
+                    <input value={row.key} onChange={e => update(i, "key", e.target.value)} placeholder={placeholder[0]}
+                        style={iStyle} list={suggestKeys ? "header-suggestions" : undefined}
+                        onFocus={e => e.currentTarget.style.borderColor = "var(--accent)"}
+                        onBlur={e => e.currentTarget.style.borderColor = "var(--border)"} />
+                    <input value={row.value} onChange={e => update(i, "value", e.target.value)} placeholder={placeholder[1]}
+                        style={{ ...iStyle, flex: 2 }}
+                        onFocus={e => e.currentTarget.style.borderColor = "var(--accent)"}
+                        onBlur={e => e.currentTarget.style.borderColor = "var(--border)"} />
                     <button onClick={() => remove(i)}
-                        style={{ background: "none", border: "none", color: "var(--text-faint)", cursor: "pointer", fontSize: "1.1em", padding: "0 4px" }}
+                        style={{ background: "none", border: "none", color: "var(--text-faint)", cursor: "pointer", fontSize: "1.15em", padding: "0 4px" }}
                         onMouseEnter={e => e.currentTarget.style.color = "var(--btn-danger)"}
                         onMouseLeave={e => e.currentTarget.style.color = "var(--text-faint)"}>×</button>
                 </div>
@@ -89,34 +93,29 @@ function KeyValueEditor({
 }
 
 const iStyle: React.CSSProperties = {
-    flex: 1, padding: "6px 10px", background: "var(--input-bg)",
-    border: "1px solid var(--border)", borderRadius: 5,
-    color: "var(--input-color)", fontFamily: "monospace",
-    fontSize: "0.86em", outline: "none",
+    flex: 1, padding: "7px 11px", background: "var(--input-bg)",
+    border: "1px solid var(--border)", borderRadius: "var(--radius-sm)",
+    color: "var(--input-color)", fontFamily: "var(--font-mono)",
+    fontSize: "0.85em", outline: "none", transition: "border-color 0.15s var(--ease-out)",
 };
 
-function Section({ title, children, defaultOpen = true }: {
-    title: string; children: React.ReactNode; defaultOpen?: boolean;
-}) {
+function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean; }) {
     const [open, setOpen] = useState(defaultOpen);
     return (
-        <div style={{ border: "1px solid var(--border-faint)", borderRadius: 7, overflow: "hidden", flexShrink: 0 }}>
+        <div className="card" style={{ overflow: "hidden", flexShrink: 0 }}>
             <div onClick={() => setOpen(o => !o)}
-                style={{ padding: "8px 12px", background: "var(--panel)", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
-                <span style={{ color: "var(--text-faint)", fontSize: "0.79em" }}>{open ? "▾" : "▸"}</span>
-                <span style={{ color: "var(--text-dim)", fontSize: "0.79em", fontWeight: 600, letterSpacing: 1 }}>{title}</span>
+                style={{ padding: "10px 14px", background: "var(--surface)", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, userSelect: "none", transition: "background 0.12s var(--ease-out)" }}
+                onMouseEnter={e => e.currentTarget.style.background = "var(--surface-hover)"}
+                onMouseLeave={e => e.currentTarget.style.background = "var(--surface)"}>
+                <span style={{ color: "var(--text-faint)", fontSize: "0.75em", display: "inline-block", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s var(--ease-out)" }}>▸</span>
+                <span style={{ color: "var(--text)", fontSize: "0.8em", fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>{title}</span>
             </div>
-            {open && <div style={{ padding: "10px 12px" }}>{children}</div>}
+            {open && <div style={{ padding: "12px 14px" }}>{children}</div>}
         </div>
     );
 }
 
-// ── Main ───────────────────────────────────────────────────────────────────
-interface Props {
-    // Receives the fetched response as raw text so the user can review/edit
-    // it in the Import tab before it's parsed and applied to the explorer.
-    onLoadToImport: (jsonText: string) => void;
-}
+interface Props { onLoadToImport: (jsonText: string) => void; }
 
 export function ApiFetchTab({ onLoadToImport }: Props) {
     const [url, setUrl] = useState("");
@@ -157,7 +156,6 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
         if (!url.trim()) { setError("URL is required"); return; }
         setLoading(true); setError(""); setResult(null);
         abortRef.current = new AbortController();
-
         const finalUrl = buildUrl(url.trim(), params);
         const finalHeaders = buildHeaders();
         const finalBody = ["POST", "PUT", "PATCH"].includes(method) && bodyType !== "none" ? bodyText : undefined;
@@ -168,36 +166,19 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
             let text: string, duration: number;
 
             if (sendMode === "proxy") {
-                // ── via Next.js proxy route ──
                 const proxyRes = await fetch("/api/proxy", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    method: "POST", headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ url: finalUrl, method, headers: finalHeaders, body: finalBody }),
                     signal: abortRef.current.signal,
                 });
                 const proxyData = await proxyRes.json();
-
-                if (!proxyRes.ok && proxyData.error) {
-                    setError(proxyData.error);
-                    setLoading(false);
-                    return;
-                }
-
-                ok = proxyData.ok;
-                status = proxyData.status;
-                statusText = proxyData.statusText;
-                resHeaders = proxyData.headers ?? {};
-                text = proxyData.body ?? "";
-                duration = proxyData.duration ?? 0;
-
+                if (!proxyRes.ok && proxyData.error) { setError(proxyData.error); setLoading(false); return; }
+                ok = proxyData.ok; status = proxyData.status; statusText = proxyData.statusText;
+                resHeaders = proxyData.headers ?? {}; text = proxyData.body ?? ""; duration = proxyData.duration ?? 0;
             } else {
-                // ── direct fetch ──
                 const t0 = performance.now();
                 const res = await fetch(finalUrl, {
-                    method,
-                    headers: finalHeaders,
-                    body: finalBody,
-                    signal: abortRef.current.signal,
+                    method, headers: finalHeaders, body: finalBody, signal: abortRef.current.signal,
                     credentials: authType === "cookie" ? "include" : "same-origin",
                 });
                 duration = Math.round(performance.now() - t0);
@@ -207,13 +188,10 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
             }
 
             let data: JSONValue;
-            try { data = JSON.parse(text); }
-            catch { data = text as unknown as JSONValue; }
-
+            try { data = JSON.parse(text); } catch { data = text as unknown as JSONValue; }
             const size = formatSize(new Blob([text]).size);
             setResult({ ok, status, statusText, headers: resHeaders, data, rawText: text, duration, size });
             setHistory(h => [{ method, url: finalUrl }, ...h.filter(x => x.url !== finalUrl)].slice(0, 12));
-
         } catch (e) {
             if ((e as Error).name !== "AbortError") setError((e as Error).message || "Request failed");
             else setError("Request cancelled");
@@ -223,32 +201,30 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
     };
 
     const labelStyle: React.CSSProperties = {
-        color: "var(--text-faint)", fontSize: "0.72em",
-        fontFamily: "monospace", letterSpacing: 1, fontWeight: 600,
-        marginBottom: 4, display: "block",
+        color: "var(--text-faint)", fontSize: "0.72em", letterSpacing: 0.6, fontWeight: 600,
+        marginBottom: 4, display: "block", textTransform: "uppercase",
     };
 
     return (
         <div style={{ display: "flex", flexDirection: "column", gap: 10, height: "100%", minHeight: 0, overflow: "hidden" }}>
 
-            {/* URL bar */}
-            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <div style={{ display: "flex", gap: 7, flexShrink: 0 }}>
                 <select value={method} onChange={e => setMethod(e.target.value as Method)}
-                    style={{ padding: "8px 10px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, color: METHOD_COLORS[method], fontFamily: "monospace", fontSize: "0.93em", fontWeight: 700, outline: "none", cursor: "pointer", flexShrink: 0 }}>
+                    style={{ padding: "9px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: METHOD_COLORS[method], fontFamily: "var(--font-mono)", fontSize: "0.9em", fontWeight: 700, outline: "none", cursor: "pointer", flexShrink: 0 }}>
                     {METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
 
-                <input value={url} onChange={e => setUrl(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && send()}
-                    placeholder="https://api.example.com/endpoint"
-                    style={{ ...iStyle, flex: 1, fontSize: "0.93em", padding: "8px 12px" }} />
+                <input value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+                    placeholder="https://api.example.com/endpoint" className="mono"
+                    style={{ ...iStyle, flex: 1, fontSize: "0.9em", padding: "9px 13px" }}
+                    onFocus={e => e.currentTarget.style.borderColor = "var(--accent)"}
+                    onBlur={e => e.currentTarget.style.borderColor = "var(--border)"} />
 
-                {/* Send mode toggle */}
-                <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden", flexShrink: 0 }}>
+                <div style={{ display: "flex", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", overflow: "hidden", flexShrink: 0 }}>
                     {(["proxy", "direct"] as SendMode[]).map(m => (
                         <button key={m} onClick={() => setSendMode(m)}
                             title={m === "proxy" ? "Route through Next.js proxy (bypasses CORS)" : "Direct fetch from browser"}
-                            style={{ padding: "8px 12px", background: sendMode === m ? "var(--accent-bg)" : "var(--surface)", border: "none", color: sendMode === m ? "var(--accent)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.72em", fontFamily: "monospace", fontWeight: sendMode === m ? 700 : 400 }}>
+                            style={{ padding: "9px 13px", background: sendMode === m ? "var(--accent-bg)" : "var(--surface)", border: "none", color: sendMode === m ? "var(--accent)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.76em", fontWeight: sendMode === m ? 600 : 500 }}>
                             {m === "proxy" ? "⇄ Proxy" : "⇡ Direct"}
                         </button>
                     ))}
@@ -256,30 +232,29 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
 
                 {loading ? (
                     <button onClick={() => abortRef.current?.abort()}
-                        style={{ padding: "8px 14px", background: "var(--danger)", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em", fontWeight: 600, flexShrink: 0 }}>
+                        style={{ padding: "9px 16px", background: "var(--danger)", border: "1px solid var(--danger-border)", borderRadius: "var(--radius-md)", color: "var(--btn-danger)", cursor: "pointer", fontSize: "0.88em", fontWeight: 600, flexShrink: 0 }}>
                         ✕ Cancel
                     </button>
                 ) : (
                     <button onClick={send}
-                        style={{ padding: "8px 20px", background: "var(--accent)", border: "none", borderRadius: 6, color: "#fff", cursor: "pointer", fontFamily: "monospace", fontSize: "0.93em", fontWeight: 600, flexShrink: 0 }}>
+                        style={{ padding: "9px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#fff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, flexShrink: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }}
+                        onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
+                        onMouseLeave={e => e.currentTarget.style.background = "var(--accent-strong)"}>
                         Send ▶
                     </button>
                 )}
             </div>
 
-            {/* Proxy mode hint */}
-            <div style={{ fontSize: "0.72em", fontFamily: "monospace", color: "var(--text-faint)", flexShrink: 0 }}>
-                {sendMode === "proxy"
-                    ? "⇄ Proxy mode — requests routed via /api/proxy, bypasses CORS. Cookies sent from server."
-                    : "⇡ Direct mode — browser sends request directly. May hit CORS on cross-origin APIs."}
+            <div style={{ fontSize: "0.74em", color: "var(--text-faint)", flexShrink: 0 }}>
+                {sendMode === "proxy" ? "⇄ Proxy mode — requests routed via /api/proxy, bypasses CORS. Cookies sent from server." : "⇡ Direct mode — browser sends request directly. May hit CORS on cross-origin APIs."}
             </div>
 
-            {/* History */}
             {history.length > 0 && (
                 <div style={{ display: "flex", gap: 5, flexWrap: "wrap", flexShrink: 0 }}>
                     {history.map((h, i) => (
                         <button key={i} onClick={() => setUrl(h.url)}
-                            style={{ padding: "2px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, cursor: "pointer", fontFamily: "monospace", fontSize: "0.72em", display: "flex", alignItems: "center", gap: 5, color: "var(--text-dim)" }}>
+                            style={{ padding: "3px 9px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: "0.74em", display: "flex", alignItems: "center", gap: 5, color: "var(--text-dim)" }}
+                            className="mono">
                             <span style={{ color: METHOD_COLORS[h.method], fontWeight: 700 }}>{h.method}</span>
                             <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.url}</span>
                         </button>
@@ -287,22 +262,21 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                 </div>
             )}
 
-            {/* Scrollable config area */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowY: "auto", flex: 1, minHeight: 0 }}>
 
-                <Section title="QUERY PARAMS" defaultOpen={false}>
+                <Section title="Query Params" defaultOpen={false}>
                     <KeyValueEditor rows={params} onChange={setParams} placeholder={["param", "value"]} />
                 </Section>
 
-                <Section title="HEADERS" defaultOpen={false}>
-                    <KeyValueEditor rows={headers} onChange={setHeaders} placeholder={["Header-Name", "value"]} />
+                <Section title="Headers" defaultOpen={false}>
+                    <KeyValueEditor rows={headers} onChange={setHeaders} placeholder={["Header-Name", "value"]} suggestKeys />
                 </Section>
 
-                <Section title="AUTH">
+                <Section title="Auth">
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                         {(["none", "bearer", "basic", "apikey", "cookie"] as AuthType[]).map(a => (
                             <button key={a} onClick={() => setAuthType(a)}
-                                style={{ padding: "4px 12px", background: authType === a ? "var(--accent-bg)" : "var(--surface)", border: `1px solid ${authType === a ? "var(--accent)" : "var(--border)"}`, borderRadius: 4, color: authType === a ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", fontSize: "0.79em", fontFamily: "monospace" }}>
+                                style={{ padding: "5px 13px", background: authType === a ? "var(--accent-bg)" : "var(--surface)", border: `1px solid ${authType === a ? "var(--accent-border)" : "var(--border)"}`, borderRadius: "var(--radius-sm)", color: authType === a ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", fontSize: "0.8em", fontWeight: authType === a ? 600 : 500 }}>
                                 {a === "none" ? "No Auth" : a === "bearer" ? "Bearer" : a === "basic" ? "Basic" : a === "apikey" ? "API Key" : "Cookie"}
                             </button>
                         ))}
@@ -310,43 +284,29 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
 
                     {authType === "bearer" && (
                         <div>
-                            <label style={labelStyle}>TOKEN</label>
-                            <input value={bearerToken} onChange={e => setBearerToken(e.target.value)}
-                                type="password" placeholder="eyJhbGci..."
+                            <label style={labelStyle}>Token</label>
+                            <input value={bearerToken} onChange={e => setBearerToken(e.target.value)} type="password" placeholder="eyJhbGci..."
                                 style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
                         </div>
                     )}
                     {authType === "basic" && (
                         <div style={{ display: "flex", gap: 8 }}>
-                            <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>USERNAME</label>
-                                <input value={basicUser} onChange={e => setBasicUser(e.target.value)} placeholder="username" style={iStyle} />
-                            </div>
-                            <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>PASSWORD</label>
-                                <input value={basicPass} onChange={e => setBasicPass(e.target.value)} type="password" placeholder="password" style={iStyle} />
-                            </div>
+                            <div style={{ flex: 1 }}><label style={labelStyle}>Username</label><input value={basicUser} onChange={e => setBasicUser(e.target.value)} placeholder="username" style={iStyle} /></div>
+                            <div style={{ flex: 1 }}><label style={labelStyle}>Password</label><input value={basicPass} onChange={e => setBasicPass(e.target.value)} type="password" placeholder="password" style={iStyle} /></div>
                         </div>
                     )}
                     {authType === "apikey" && (
                         <div style={{ display: "flex", gap: 8 }}>
-                            <div style={{ flex: 1 }}>
-                                <label style={labelStyle}>HEADER NAME</label>
-                                <input value={apiKeyName} onChange={e => setApiKeyName(e.target.value)} placeholder="X-API-Key" style={iStyle} />
-                            </div>
-                            <div style={{ flex: 2 }}>
-                                <label style={labelStyle}>VALUE</label>
-                                <input value={apiKeyValue} onChange={e => setApiKeyValue(e.target.value)} type="password" placeholder="your-api-key" style={iStyle} />
-                            </div>
+                            <div style={{ flex: 1 }}><label style={labelStyle}>Header Name</label><input value={apiKeyName} onChange={e => setApiKeyName(e.target.value)} placeholder="X-API-Key" style={iStyle} /></div>
+                            <div style={{ flex: 2 }}><label style={labelStyle}>Value</label><input value={apiKeyValue} onChange={e => setApiKeyValue(e.target.value)} type="password" placeholder="your-api-key" style={iStyle} /></div>
                         </div>
                     )}
                     {authType === "cookie" && (
                         <div>
-                            <label style={labelStyle}>COOKIE STRING</label>
-                            <input value={cookieStr} onChange={e => setCookieStr(e.target.value)}
-                                placeholder="session=abc123; token=xyz"
+                            <label style={labelStyle}>Cookie String</label>
+                            <input value={cookieStr} onChange={e => setCookieStr(e.target.value)} placeholder="session=abc123; token=xyz"
                                 style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
-                            <div style={{ color: "var(--text-faint)", fontSize: "0.72em", fontFamily: "monospace", marginTop: 4 }}>
+                            <div style={{ color: "var(--text-faint)", fontSize: "0.74em", marginTop: 5 }}>
                                 In proxy mode cookies are sent as header. In direct mode credentials:include is used.
                             </div>
                         </div>
@@ -354,11 +314,11 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                 </Section>
 
                 {["POST", "PUT", "PATCH"].includes(method) && (
-                    <Section title="BODY">
+                    <Section title="Body">
                         <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
                             {(["none", "json", "form"] as BodyType[]).map(b => (
                                 <button key={b} onClick={() => setBodyType(b)}
-                                    style={{ padding: "4px 12px", background: bodyType === b ? "var(--accent-bg)" : "var(--surface)", border: `1px solid ${bodyType === b ? "var(--accent)" : "var(--border)"}`, borderRadius: 4, color: bodyType === b ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", fontSize: "0.79em", fontFamily: "monospace" }}>
+                                    style={{ padding: "5px 13px", background: bodyType === b ? "var(--accent-bg)" : "var(--surface)", border: `1px solid ${bodyType === b ? "var(--accent-border)" : "var(--border)"}`, borderRadius: "var(--radius-sm)", color: bodyType === b ? "var(--accent)" : "var(--text-dim)", cursor: "pointer", fontSize: "0.8em", fontWeight: bodyType === b ? 600 : 500 }}>
                                     {b === "none" ? "None" : b === "json" ? "JSON" : "Form Encoded"}
                                 </button>
                             ))}
@@ -367,54 +327,45 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                             <textarea value={bodyText} onChange={e => setBodyText(e.target.value)}
                                 placeholder={bodyType === "json" ? '{\n  "key": "value"\n}' : "key=value&foo=bar"}
                                 spellCheck={false} rows={6}
-                                style={{ ...iStyle, width: "100%", resize: "vertical", lineHeight: 1.6, boxSizing: "border-box" }} />
+                                style={{ ...iStyle, width: "100%", resize: "vertical", lineHeight: 1.6, boxSizing: "border-box", fontSize: "0.86em" }} />
                         )}
                     </Section>
                 )}
 
-                {/* Error */}
                 {error && (
-                    <div style={{ padding: "8px 12px", background: "var(--danger)", border: "1px solid var(--danger-border)", borderRadius: 6, color: "var(--btn-danger)", fontFamily: "monospace", fontSize: "0.86em", flexShrink: 0 }}>
+                    <div className="mono" style={{ padding: "9px 13px", background: "var(--danger)", border: "1px solid var(--danger-border)", borderRadius: "var(--radius-md)", color: "var(--btn-danger)", fontSize: "0.85em", flexShrink: 0 }}>
                         ⚠ {error}
                     </div>
                 )}
 
-                {/* Loading */}
                 {loading && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 6, flexShrink: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 15px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", flexShrink: 0 }}>
                         <div style={{ width: 16, height: 16, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.7s linear infinite", flexShrink: 0 }} />
-                        <span style={{ color: "var(--text-dim)", fontFamily: "monospace", fontSize: "0.86em" }}>
-                            {sendMode === "proxy" ? "Sending via proxy…" : "Sending request…"}
-                        </span>
+                        <span style={{ color: "var(--text-dim)", fontSize: "0.88em" }}>{sendMode === "proxy" ? "Sending via proxy…" : "Sending request…"}</span>
                     </div>
                 )}
 
-                {/* Response */}
                 {result && (
-                    <div style={{ display: "flex", flexDirection: "column", border: "1px solid var(--border-faint)", borderRadius: 8, overflow: "hidden", flexShrink: 0 }}>
+                    <div className="card" style={{ display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
+                        <div style={{ padding: "9px 13px", background: "var(--surface)", borderBottom: "1px solid var(--border-faint)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flexShrink: 0 }}>
+                            <span className="mono" style={{ fontWeight: 700, fontSize: "0.9em", color: statusColor(result.status) }}>{result.status} {result.statusText}</span>
+                            <span className="mono" style={{ color: "var(--text-faint)", fontSize: "0.78em" }}>{result.duration}ms</span>
+                            <span className="mono" style={{ color: "var(--text-faint)", fontSize: "0.78em" }}>{result.size}</span>
 
-                        {/* Response meta */}
-                        <div style={{ padding: "8px 12px", background: "var(--panel)", borderBottom: "1px solid var(--border-faint)", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flexShrink: 0 }}>
-                            <span style={{ fontFamily: "monospace", fontWeight: 700, fontSize: "0.93em", color: statusColor(result.status) }}>
-                                {result.status} {result.statusText}
-                            </span>
-                            <span style={{ color: "var(--text-faint)", fontSize: "0.79em", fontFamily: "monospace" }}>{result.duration}ms</span>
-                            <span style={{ color: "var(--text-faint)", fontSize: "0.79em", fontFamily: "monospace" }}>{result.size}</span>
-
-                            <div style={{ display: "flex", gap: 3 }}>
+                            <div style={{ display: "flex", gap: 2, background: "var(--panel)", padding: 2, borderRadius: "var(--radius-sm)" }}>
                                 {(["body", "headers"] as const).map(t => (
                                     <button key={t} onClick={() => setResTab(t)}
-                                        style={{ padding: "2px 10px", background: resTab === t ? "var(--accent-bg)" : "none", border: resTab === t ? "1px solid var(--accent)" : "1px solid transparent", borderRadius: 4, color: resTab === t ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.79em", fontFamily: "monospace" }}>
+                                        style={{ padding: "3px 11px", background: resTab === t ? "var(--surface)" : "none", border: "none", borderRadius: 4, color: resTab === t ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.78em", fontWeight: 500, textTransform: "capitalize" }}>
                                         {t}
                                     </button>
                                 ))}
                             </div>
 
                             {resTab === "body" && (
-                                <div style={{ display: "flex", gap: 3 }}>
+                                <div style={{ display: "flex", gap: 2, background: "var(--panel)", padding: 2, borderRadius: "var(--radius-sm)" }}>
                                     {(["pretty", "raw"] as const).map(v => (
                                         <button key={v} onClick={() => setResView(v)}
-                                            style={{ padding: "2px 8px", background: resView === v ? "var(--accent-bg)" : "none", border: resView === v ? "1px solid var(--accent)" : "1px solid transparent", borderRadius: 4, color: resView === v ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.72em", fontFamily: "monospace" }}>
+                                            style={{ padding: "3px 9px", background: resView === v ? "var(--surface)" : "none", border: "none", borderRadius: 4, color: resView === v ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.72em", fontWeight: 500, textTransform: "capitalize" }}>
                                             {v}
                                         </button>
                                     ))}
@@ -422,32 +373,26 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                             )}
 
                             <div style={{ marginLeft: "auto", display: "flex", gap: 6 }}>
-                                <button
-                                    onClick={() => onLoadToImport(
-                                        typeof result.data === "string" ? result.rawText : JSON.stringify(result.data, null, 2)
-                                    )}
-                                    style={{ padding: "4px 12px", background: "var(--success-bg)", border: "1px solid var(--success-border)", borderRadius: 5, color: "var(--success)", cursor: "pointer", fontSize: "0.79em", fontFamily: "monospace", fontWeight: 600 }}>
+                                <button onClick={() => onLoadToImport(typeof result.data === "string" ? result.rawText : JSON.stringify(result.data, null, 2))}
+                                    style={{ padding: "5px 13px", background: "var(--success-bg)", border: "1px solid var(--success-border)", borderRadius: "var(--radius-sm)", color: "var(--success)", cursor: "pointer", fontSize: "0.8em", fontWeight: 600 }}>
                                     → Edit in Import
                                 </button>
                             </div>
                         </div>
 
-                        {/* Response body — max height so it doesn't push page */}
-                        <div style={{ maxHeight: 400, overflowY: "auto", padding: 12 }}>
+                        <div style={{ maxHeight: 400, overflowY: "auto", padding: 13 }}>
                             {resTab === "headers" ? (
                                 <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                                     {Object.entries(result.headers).map(([k, v]) => (
-                                        <div key={k} style={{ display: "flex", gap: 10, fontFamily: "monospace", fontSize: "0.86em", borderBottom: "1px solid var(--border-faint)", padding: "4px 0" }}>
+                                        <div key={k} className="mono" style={{ display: "flex", gap: 10, fontSize: "0.86em", borderBottom: "1px solid var(--border-faint)", padding: "5px 0" }}>
                                             <span style={{ color: "var(--node-key)", flexShrink: 0, minWidth: 180 }}>{k}</span>
                                             <span style={{ color: "var(--text-dim)", wordBreak: "break-all" }}>{v}</span>
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <pre style={{ color: "var(--text)", fontFamily: "monospace", fontSize: "0.86em", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
-                                    {resView === "raw" || typeof result.data === "string"
-                                        ? result.rawText
-                                        : JSON.stringify(result.data, null, 2)}
+                                <pre className="mono" style={{ color: "var(--text)", fontSize: "0.86em", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0 }}>
+                                    {resView === "raw" || typeof result.data === "string" ? result.rawText : JSON.stringify(result.data, null, 2)}
                                 </pre>
                             )}
                         </div>

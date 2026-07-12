@@ -1,132 +1,5 @@
-// ─── THEME DEFINITIONS ───────────────────────────────────────────────────────
-export const THEMES = {
-  Dark: {
-    bg: "#07070f",
-    surface: "#0d0d1e",
-    panel: "#09091a",
-    border: "#1e1e34",
-    borderFaint: "#131323",
-    text: "#c0c0e0",
-    textDim: "#888aaa",
-    textFaint: "#555577",
-    accent: "#5555cc",
-    accentBg: "#1e1e44",
-    nodeKey: "#9d9de8",
-    nodeStr: "#ffcc80",
-    nodeNum: "#80cbc4",
-    nodeBool: "#ef9a7a",
-    nodeNull: "#b39ddb",
-    scrollThumb: "#2a2a40",
-    inputBg: "#09091a",
-    inputColor: "#c0c0e0",
-    btnDanger: "#e05555",
-    danger: "#3a1010",
-    dangerBorder: "#5a2020",
-    success: "#4caf7d",
-    successBg: "#0d2a1a",
-    successBorder: "#1a4a2a",
-    tagBg: "#111128",
-    tagBorder: "#2a2a50",
-    tagColor: "#7777bb",
-    overlay: "#000000cc",
-  },
-  Darker: {
-    bg: "#000005",
-    surface: "#070710",
-    panel: "#04040c",
-    border: "#111118",
-    borderFaint: "#09090e",
-    text: "#9090b8",
-    textDim: "#666688",
-    textFaint: "#444460",
-    accent: "#4444aa",
-    accentBg: "#16163a",
-    nodeKey: "#8080cc",
-    nodeStr: "#d4a840",
-    nodeNum: "#5ab0a0",
-    nodeBool: "#cc7744",
-    nodeNull: "#9077aa",
-    scrollThumb: "#1e1e30",
-    inputBg: "#030308",
-    inputColor: "#9090b8",
-    btnDanger: "#cc4444",
-    danger: "#2a0808",
-    dangerBorder: "#4a1818",
-    success: "#3a9960",
-    successBg: "#081a10",
-    successBorder: "#143a20",
-    tagBg: "#0a0a18",
-    tagBorder: "#1e1e38",
-    tagColor: "#6666aa",
-    overlay: "#000000dd",
-  },
-  Midnight: {
-    bg: "#000d1a",
-    surface: "#001428",
-    panel: "#000f20",
-    border: "#0a2040",
-    borderFaint: "#061530",
-    text: "#88aacc",
-    textDim: "#557799",
-    textFaint: "#336688",
-    accent: "#2266aa",
-    accentBg: "#0d2a44",
-    nodeKey: "#6699cc",
-    nodeStr: "#88bbdd",
-    nodeNum: "#44aaaa",
-    nodeBool: "#6688ff",
-    nodeNull: "#8866aa",
-    scrollThumb: "#0a2a44",
-    inputBg: "#000a15",
-    inputColor: "#88aacc",
-    btnDanger: "#cc4455",
-    danger: "#1a0810",
-    dangerBorder: "#3a1828",
-    success: "#3a9977",
-    successBg: "#041a15",
-    successBorder: "#0a3028",
-    tagBg: "#001020",
-    tagBorder: "#0a2a40",
-    tagColor: "#4488aa",
-    overlay: "#000010dd",
-  },
-  Light: {
-    bg: "#f5f5f5",
-    surface: "#ffffff",
-    panel: "#ebebeb",
-    border: "#cccccc",
-    borderFaint: "#e2e2e2",
-    text: "#111111",
-    textDim: "#444444",
-    textFaint: "#888888",
-    accent: "#2563eb",
-    accentBg: "#eff6ff",
-    nodeKey: "#1d4ed8",
-    nodeStr: "#15803d",
-    nodeNum: "#0369a1",
-    nodeBool: "#b45309",
-    nodeNull: "#7c3aed",
-    scrollThumb: "#bbbbbb",
-    inputBg: "#ffffff",
-    inputColor: "#111111",
-    btnDanger: "#dc2626",
-    danger: "#fef2f2",
-    dangerBorder: "#fca5a5",
-    success: "#16a34a",
-    successBg: "#f0fdf4",
-    successBorder: "#86efac",
-    tagBg: "#eff6ff",
-    tagBorder: "#bfdbfe",
-    tagColor: "#1d4ed8",
-    overlay: "#00000044",
-  },
-} as const;
-
-export type ThemeKey = keyof typeof THEMES;
-export type Theme = (typeof THEMES)[ThemeKey];
-
 export interface Settings {
-  theme: ThemeKey;
+  theme: string;
   fontSize: string;
   collapseDepth: string;
   lineNumbers: boolean;
@@ -135,42 +8,199 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "Dark",
-  fontSize: "14px",
+  theme: "Midnight",
+  fontSize: "13px",
   collapseDepth: "2",
   lineNumbers: true,
   wordWrap: true,
   typeHints: true,
 };
 
-// Inject all CSS variables for the active theme + font size
-export function buildThemeStyle(theme: Theme, fontSize: string): string {
+interface ThemeTokens {
+  bg: string;
+  bgElevated: string;
+  panel: string;
+  surface: string;
+  surfaceHover: string;
+  overlay: string;
+  border: string;
+  borderFaint: string;
+  borderStrong: string;
+  text: string;
+  textDim: string;
+  textFaint: string;
+  inputBg: string;
+  inputColor: string;
+  accent: string;
+  accentStrong: string;
+  accentBg: string;
+  accentBorder: string;
+  success: string;
+  successBg: string;
+  successBorder: string;
+  danger: string;
+  dangerBorder: string;
+  btnDanger: string;
+  nodeKey: string;
+  nodeStr: string;
+  nodeNum: string;
+  nodeBool: string;
+  nodeNull: string;
+  tagBg: string;
+  tagColor: string;
+  tagBorder: string;
+}
+
+export const THEMES: Record<string, ThemeTokens> = {
+  Midnight: {
+    bg: "#08090c",
+    bgElevated: "#0d0f14",
+    panel: "#101218",
+    surface: "#161922",
+    surfaceHover: "#1d212b",
+    overlay: "rgba(5,6,9,0.75)",
+    border: "#23262f",
+    borderFaint: "#191c24",
+    borderStrong: "#31353f",
+    text: "#eceef1",
+    textDim: "#9aa0ac",
+    textFaint: "#5f6672",
+    inputBg: "#0b0c10",
+    inputColor: "#eceef1",
+    accent: "#818cf8",
+    accentStrong: "#6366f1",
+    accentBg: "rgba(129,140,248,0.12)",
+    accentBorder: "rgba(129,140,248,0.35)",
+    success: "#3ddc97",
+    successBg: "rgba(61,220,151,0.10)",
+    successBorder: "rgba(61,220,151,0.30)",
+    danger: "rgba(248,113,113,0.10)",
+    dangerBorder: "rgba(248,113,113,0.30)",
+    btnDanger: "#f87171",
+    nodeKey: "#7dd3fc",
+    nodeStr: "#86efac",
+    nodeNum: "#fbbf85",
+    nodeBool: "#c4b5fd",
+    nodeNull: "#6b7280",
+    tagBg: "rgba(129,140,248,0.10)",
+    tagColor: "#a5b0ff",
+    tagBorder: "rgba(129,140,248,0.30)",
+  },
+  Paper: {
+    bg: "#f7f7f9",
+    bgElevated: "#ffffff",
+    panel: "#ffffff",
+    surface: "#f1f1f5",
+    surfaceHover: "#e9e9ef",
+    overlay: "rgba(20,22,28,0.45)",
+    border: "#e1e2e8",
+    borderFaint: "#ececf0",
+    borderStrong: "#cfd1da",
+    text: "#16171c",
+    textDim: "#565a66",
+    textFaint: "#8b8f99",
+    inputBg: "#ffffff",
+    inputColor: "#16171c",
+    accent: "#4f46e5",
+    accentStrong: "#4338ca",
+    accentBg: "rgba(79,70,229,0.08)",
+    accentBorder: "rgba(79,70,229,0.28)",
+    success: "#16a34a",
+    successBg: "rgba(22,163,74,0.08)",
+    successBorder: "rgba(22,163,74,0.26)",
+    danger: "rgba(220,38,38,0.08)",
+    dangerBorder: "rgba(220,38,38,0.26)",
+    btnDanger: "#dc2626",
+    nodeKey: "#0369a1",
+    nodeStr: "#15803d",
+    nodeNum: "#b45309",
+    nodeBool: "#7c3aed",
+    nodeNull: "#6b7280",
+    tagBg: "rgba(79,70,229,0.08)",
+    tagColor: "#4338ca",
+    tagBorder: "rgba(79,70,229,0.26)",
+  },
+};
+
+export function buildThemeStyle(t: ThemeTokens, fontSize: string) {
   return `
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;600&display=swap');
-    *{box-sizing:border-box;margin:0;padding:0}
-    :root{
-      --bg:${theme.bg};--surface:${theme.surface};--panel:${theme.panel};
-      --border:${theme.border};--border-faint:${theme.borderFaint};
-      --text:${theme.text};--text-dim:${theme.textDim};--text-faint:${theme.textFaint};
-      --accent:${theme.accent};--accent-bg:${theme.accentBg};
-      --node-key:${theme.nodeKey};--node-str:${theme.nodeStr};--node-num:${theme.nodeNum};
-      --node-bool:${theme.nodeBool};--node-null:${theme.nodeNull};
-      --scroll:${theme.scrollThumb};
-      --input-bg:${theme.inputBg};--input-color:${theme.inputColor};
-      --danger:${theme.danger};--danger-border:${theme.dangerBorder};--btn-danger:${theme.btnDanger};
-      --success:${theme.success};--success-bg:${theme.successBg};--success-border:${theme.successBorder};
-      --tag-bg:${theme.tagBg};--tag-border:${theme.tagBorder};--tag-color:${theme.tagColor};
-      --overlay:${theme.overlay};
+    :root {
+      --bg:${t.bg}; --bg-elevated:${t.bgElevated}; --panel:${t.panel}; --surface:${t.surface};
+      --surface-hover:${t.surfaceHover}; --overlay:${t.overlay};
+      --border:${t.border}; --border-faint:${t.borderFaint}; --border-strong:${t.borderStrong};
+      --text:${t.text}; --text-dim:${t.textDim}; --text-faint:${t.textFaint};
+      --input-bg:${t.inputBg}; --input-color:${t.inputColor};
+      --accent:${t.accent}; --accent-strong:${t.accentStrong}; --accent-bg:${t.accentBg}; --accent-border:${t.accentBorder};
+      --success:${t.success}; --success-bg:${t.successBg}; --success-border:${t.successBorder};
+      --danger:${t.danger}; --danger-border:${t.dangerBorder}; --btn-danger:${t.btnDanger};
+      --node-key:${t.nodeKey}; --node-str:${t.nodeStr}; --node-num:${t.nodeNum};
+      --node-bool:${t.nodeBool}; --node-null:${t.nodeNull};
+      --tag-bg:${t.tagBg}; --tag-color:${t.tagColor}; --tag-border:${t.tagBorder};
+
+      --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-display: 'Space Grotesk', var(--font-ui);
+      --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, monospace;
+
+      --text-xs: 0.72rem; --text-sm: 0.8125rem; --text-base: ${fontSize};
+      --text-md: 0.9375rem; --text-lg: 1.05rem; --text-xl: 1.25rem; --text-2xl: 1.6rem;
+
+      --radius-sm: 6px; --radius-md: 9px; --radius-lg: 14px; --radius-full: 999px;
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.18);
+      --shadow-md: 0 10px 28px rgba(0,0,0,0.30), 0 2px 6px rgba(0,0,0,0.18);
+      --shadow-lg: 0 24px 64px rgba(0,0,0,0.38);
+      --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+      font-size: var(--text-base);
     }
-    html,body,#root{font-size:${fontSize};}
-    input,textarea,select{background:var(--input-bg) !important;color:var(--input-color) !important;}
-    ::-webkit-scrollbar{width:5px;height:5px}
-    ::-webkit-scrollbar-track{background:var(--bg)}
-    ::-webkit-scrollbar-thumb{background:var(--scroll);border-radius:3px}
-    .tree-row:hover{background:var(--surface) !important}
-    input,textarea,select{-webkit-tap-highlight-color:transparent}
-    select option{background:var(--panel)}
-    textarea::placeholder{color:var(--text-faint)}
-    input::placeholder{color:var(--text-faint)}
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: var(--font-ui);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      letter-spacing: -0.01em;
+    }
+
+    code, pre, kbd, .mono { font-family: var(--font-mono); letter-spacing: 0; }
+
+    ::selection { background: var(--accent); color: #fff; }
+
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-strong);
+      border-radius: var(--radius-full);
+      border: 2px solid var(--bg);
+      background-clip: padding-box;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+    button, input, select, textarea { font-family: inherit; }
+    button { transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out), color 0.15s var(--ease-out), transform 0.1s var(--ease-out); }
+    button:active { transform: scale(0.98); }
+
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+
+    .tree-row { transition: background 0.12s var(--ease-out); border-radius: var(--radius-sm); }
+    .tree-row:hover { background: var(--surface); }
+
+    .card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+    }
   `;
 }

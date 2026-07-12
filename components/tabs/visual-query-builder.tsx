@@ -300,7 +300,12 @@ function GroupNode({ group, leafFields, onChange, onRemove, isMobile, depth = 0 
                     {group.logic === "AND" ? "all must match" : "any must match"}
                 </span>
                 <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button onClick={addCondition} style={{ padding: "3px 10px", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 5, color: "var(--text-dim)", cursor: "pointer", fontSize: "0.79em" }}>+ Condition</button>
+                    <button onClick={addCondition}
+                        style={{ padding: "4px 11px", background: "var(--surface)", border: "1px dashed var(--border-strong)", borderRadius: "var(--radius-sm)", color: "var(--text-dim)", cursor: "pointer", fontSize: "0.8em", transition: "all 0.15s var(--ease-out)" }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--accent-bg)"; e.currentTarget.style.color = "var(--accent)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "var(--surface)"; e.currentTarget.style.color = "var(--text-dim)"; }}>
+                        + Condition
+                    </button>
                     <button onClick={addGroup} style={{ padding: "3px 10px", background: "var(--surface)", border: "1px dashed var(--border)", borderRadius: 5, color: "var(--node-null)", cursor: "pointer", fontSize: "0.79em" }}>+ Group</button>
                     {arrayFields.map(af => (
                         <button key={af.path} onClick={() => addSubArrayFilter(af.path)}

@@ -1,16 +1,19 @@
 "use client";
 import { useRef, useState } from "react";
 import { useBreakpoint } from "@/hooks/use-breakpoints";
-import { JSONValue } from "@/types/json";
+import { ApplyHistoryEntry, JSONValue } from "@/types/json";
 import MOCK_JSON from "@/data/mock-data.json";
 import { parseAsync } from "@/utils/parse-async";
 import { stringifyAsync } from "@/utils/copy-async";
+import { formatSize } from "@/utils/format-size";
 import { VirtualTextView } from "../virtual-text-view";
 
 interface Props {
     onApply: (data: JSONValue) => void;
     getPasteText: () => string;
     setPasteText: (text: string) => void;
+    history: ApplyHistoryEntry[];
+    onRestore: (entry: ApplyHistoryEntry) => void;
 }
 
 const LARGE_THRESHOLD = 50_000;
@@ -20,13 +23,55 @@ function yieldToBrowser(): Promise<void> {
 }
 
 function sizeLabel(text: string) {
-    const bytes = new Blob([text]).size;
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    return formatSize(new Blob([text]).size);
 }
 
-export function PasteTab({ onApply, getPasteText, setPasteText }: Props) {
+function HistoryButton({ history, onRestore }: { history: ApplyHistoryEntry[]; onRestore: (entry: ApplyHistoryEntry) => void }) {
+    const [open, setOpen] = useState(false);
+    if (history.length === 0) return null;
+
+    return (
+        <div style={{ position: "relative" }}>
+            <button
+                onClick={() => setOpen(o => !o)}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                style={{
+                    padding: "9px 15px", borderRadius: "var(--radius-md)", cursor: "pointer",
+                    fontSize: "0.85em", fontWeight: 500, border: `1px solid ${open ? "var(--accent-border)" : "var(--border)"}`,
+                    background: open ? "var(--accent-bg)" : "var(--surface)", color: open ? "var(--accent)" : "var(--text-dim)",
+                    transition: "all 0.15s var(--ease-out)", display: "flex", alignItems: "center", gap: 6,
+                }}>
+                History
+                <span className="mono" style={{ fontSize: "0.86em", color: "var(--text-faint)", background: "var(--panel)", border: "1px solid var(--border-faint)", borderRadius: "var(--radius-full)", padding: "0 6px" }}>
+                    {history.length}
+                </span>
+            </button>
+
+            {open && (
+                <div className="card" style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, width: 280, zIndex: 300, boxShadow: "var(--shadow-md)", overflow: "hidden", animation: "fadeSlideUp 0.12s var(--ease-out)" }}>
+                    <div style={{ padding: "8px 12px 6px", color: "var(--text-faint)", fontSize: "0.68em", letterSpacing: 1, fontWeight: 600 }}>
+                        PAST APPLIES · CLICK TO RESTORE
+                    </div>
+                    {history.map((h, i) => (
+                        <div key={h.timestamp}
+                            onMouseDown={() => onRestore(h)}
+                            style={{ padding: "8px 12px", cursor: "pointer", borderTop: "1px solid var(--border-faint)", display: "flex", flexDirection: "column", gap: 2 }}
+                            onMouseEnter={e => (e.currentTarget.style.background = "var(--surface)")}
+                            onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                            <span style={{ fontSize: "0.82em", color: "var(--text)" }}>{h.label}</span>
+                            <span className="mono" style={{ fontSize: "0.7em", color: "var(--text-faint)" }}>
+                                {new Date(h.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                {i === 0 ? " · most recent" : ""}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+export function PasteTab({ onApply, getPasteText, setPasteText, history, onRestore }: Props) {
     const { isMobile } = useBreakpoint();
     const textRef = useRef(getPasteText());
     const [textVersion, setTextVersion] = useState(0);
@@ -181,7 +226,7 @@ export function PasteTab({ onApply, getPasteText, setPasteText }: Props) {
                         fontWeight: 600, opacity: loading || charCount === 0 ? 0.6 : 1,
                         cursor: loading || charCount === 0 ? "not-allowed" : "pointer",
                         display: "flex", alignItems: "center", gap: 6, minWidth: 130,
-                        boxShadow: !loading && !success && charCount > 0 ? "0 1px 2px rgba(0,0,0,0.2)" : "none",
+                        boxShadow: !loading && !success && charCount > 0 ? "var(--shadow-button)" : "none",
                     }}
                     onMouseEnter={e => { if (!loading && !success && charCount > 0) e.currentTarget.style.background = "var(--accent)"; }}
                     onMouseLeave={e => { if (!loading && !success && charCount > 0) e.currentTarget.style.background = "var(--accent-strong)"; }}>
@@ -214,6 +259,8 @@ export function PasteTab({ onApply, getPasteText, setPasteText }: Props) {
                     style={{ ...btnBase, color: "var(--text-faint)", opacity: loading ? 0.5 : 1 }}>
                     Clear
                 </button>
+
+                <HistoryButton history={history} onRestore={onRestore} />
 
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
                     {fileName && (

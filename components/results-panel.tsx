@@ -13,6 +13,16 @@ interface Props {
     settings: Settings;
 }
 
+function valueColor(value: unknown): string {
+    if (value === null) return "var(--node-null)";
+    switch (typeof value) {
+        case "number": return "var(--node-num)";
+        case "boolean": return "var(--node-bool)";
+        case "string": return "var(--node-str)";
+        default: return "var(--text-dim)";
+    }
+}
+
 export function ResultsPanel({ queryResult, queryRunning, resultView, setResultView, settings }: Props) {
     const [jsonText, setJsonText] = useState<string>("");
     const [stringifying, setStringifying] = useState(false);
@@ -31,15 +41,15 @@ export function ResultsPanel({ queryResult, queryRunning, resultView, setResultV
     }, [queryResult, resultView]);
 
     if (queryRunning) return (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, color: "var(--text-faint)" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 10, color: "var(--text-dim)" }}>
             <div style={{ width: 20, height: 20, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
             <span style={{ fontSize: "0.86em" }}>Running query…</span>
         </div>
     );
 
     if (!queryResult) return (
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-faint)", flexDirection: "column", gap: 10 }}>
-            <div style={{ fontSize: "1.8em", opacity: 0.5 }} className="mono">⌥</div>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", flexDirection: "column", gap: 10 }}>
+            <div style={{ fontSize: "1.8em", opacity: 0.5, color: "var(--text-faint)" }} className="mono">⌥</div>
             <div style={{ fontSize: "0.86em" }}>Run a query to see results</div>
         </div>
     );
@@ -49,7 +59,7 @@ export function ResultsPanel({ queryResult, queryRunning, resultView, setResultV
     return (
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
             <div style={{ padding: "9px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: "1px solid var(--border-faint)", background: "var(--panel)", flexShrink: 0, flexWrap: "wrap" }}>
-                <span style={{ color: "var(--text)", fontSize: "0.78em", letterSpacing: 0.6, fontWeight: 600, textTransform: "uppercase" }}>Results</span>
+                <span className="panel-label">Results</span>
                 {!isError && <span style={{ color: "var(--accent)", fontSize: "0.82em", fontWeight: 600 }} className="mono">{results.length}</span>}
                 <div style={{ marginLeft: "auto", display: "flex", gap: 10, alignItems: "center" }}>
                     <div style={{ display: "flex", gap: 2, background: "var(--surface)", padding: 3, borderRadius: "var(--radius-md)", border: "1px solid var(--border-faint)" }}>
@@ -111,7 +121,7 @@ export function ResultsPanel({ queryResult, queryRunning, resultView, setResultV
                                         onMouseEnter={e => (e.currentTarget.style.background = "var(--surface)")}
                                         onMouseLeave={e => (e.currentTarget.style.background = "none")}>
                                         {settings.lineNumbers !== false && <td className="mono" style={{ padding: "7px 10px", color: "var(--text-faint)", verticalAlign: "top" }}>{i + 1}</td>}
-                                        <td className="mono" style={{ padding: "7px 10px", color: "var(--node-str)", wordBreak: "break-all", verticalAlign: "top" }}>{JSON.stringify(r.value)}</td>
+                                        <td className="mono" style={{ padding: "7px 10px", color: valueColor(r.value), wordBreak: "break-all", verticalAlign: "top" }}>{JSON.stringify(r.value)}</td>
                                         <td className="mono" style={{ padding: "7px 10px", color: "var(--text-dim)", wordBreak: "break-all", verticalAlign: "top" }}>{r.path}</td>
                                         <td style={{ padding: "6px 4px", verticalAlign: "top" }}><CopyButton value={r.value} label="Copy" size="xs" /></td>
                                     </tr>

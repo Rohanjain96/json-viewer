@@ -1,6 +1,6 @@
 "use client";
 import { useBreakpoint } from "@/hooks/use-breakpoints";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 interface LeafField {
@@ -133,10 +133,10 @@ const dangerBtn: React.CSSProperties = {
 };
 
 // ─── CONDITION ROW ────────────────────────────────────────────────────────────
-function ConditionRow({ cond, leafFields, onUpdate, onRemove, isMobile, depth }: {
+function ConditionRow({ cond, leafFields, onUpdate, onRemove, isMobile }: {
     cond: Condition; leafFields: LeafField[];
     onUpdate: (key: string, val: string) => void;
-    onRemove: () => void; isMobile: boolean; depth: number;
+    onRemove: () => void; isMobile: boolean;
 }) {
     const fld = leafFields.find(f => f.path === cond.field);
     const ops = OPS_BY_TYPE[fld?.type ?? "default"] || OPS_BY_TYPE.default;
@@ -149,7 +149,6 @@ function ConditionRow({ cond, leafFields, onUpdate, onRemove, isMobile, depth }:
             gap: 8, alignItems: "center",
             background: "var(--surface)", border: "1px solid var(--border)",
             borderRadius: 8, padding: "10px 12px",
-            borderLeft: `3px solid ${depth === 0 ? "var(--accent)" : "var(--node-null)"}`,
         }}>
             <select aria-label="pick field" value={cond.field} onChange={e => onUpdate("field", e.target.value)} style={selStyle}>
                 {leafFields.filter(f => f.type !== "array").map(f => (
@@ -180,10 +179,10 @@ function ConditionRow({ cond, leafFields, onUpdate, onRemove, isMobile, depth }:
 }
 
 // ─── SUB-ARRAY NODE ───────────────────────────────────────────────────────────
-function SubArrayNode({ node, leafFields, onChange, onRemove, isMobile, depth }: {
+function SubArrayNode({ node, leafFields, onChange, onRemove, isMobile }: {
     node: SubArray; leafFields: LeafField[];
     onChange: (n: SubArray) => void; onRemove: () => void;
-    isMobile: boolean; depth: number;
+    isMobile: boolean;
 }) {
     const parentField = leafFields.find(f => f.path === node.arrayField);
     const subLeafFields = parentField?.subFields || [];
@@ -231,7 +230,7 @@ function SubArrayNode({ node, leafFields, onChange, onRemove, isMobile, depth }:
                         <div key={child.id}>
                             {i > 0 && <div style={{ textAlign: "center", padding: "2px 0 6px", color: "var(--accent)", fontSize: "0.72em", fontFamily: "monospace", letterSpacing: 2 }}>{node.logic}</div>}
                             {child.kind === "condition" && (
-                                <ConditionRow cond={child as Condition} leafFields={subLeafFields} isMobile={isMobile} depth={depth}
+                                <ConditionRow cond={child as Condition} leafFields={subLeafFields} isMobile={isMobile}
                                     onUpdate={(key, val) => {
                                         const updated = { ...child, [key]: val } as Condition;
                                         if (key === "field") { const fld = subLeafFields.find(f => f.path === val); updated.op = OPS_BY_TYPE[fld?.type ?? "default"]?.[0] ?? "="; updated.val = String(fld?.sample ?? ""); }
@@ -332,7 +331,7 @@ function GroupNode({ group, leafFields, onChange, onRemove, isMobile, depth = 0 
                                 </div>
                             )}
                             {child.kind === "condition" && (
-                                <ConditionRow cond={child as Condition} leafFields={leafFields} isMobile={isMobile} depth={depth}
+                                <ConditionRow cond={child as Condition} leafFields={leafFields} isMobile={isMobile}
                                     onUpdate={(key, val) => {
                                         const updated = { ...child, [key]: val } as Condition;
                                         if (key === "field") { const fld = leafFields.find(f => f.path === val); updated.op = OPS_BY_TYPE[fld?.type ?? "default"]?.[0] ?? "="; updated.val = String(fld?.sample ?? ""); }
@@ -346,7 +345,7 @@ function GroupNode({ group, leafFields, onChange, onRemove, isMobile, depth = 0 
                                     onRemove={() => removeChild(child.id)} />
                             )}
                             {child.kind === "subarray" && (
-                                <SubArrayNode node={child as SubArray} leafFields={leafFields} isMobile={isMobile} depth={depth + 1}
+                                <SubArrayNode node={child as SubArray} leafFields={leafFields} isMobile={isMobile}
                                     onChange={updated => updateChild(child.id, () => updated)}
                                     onRemove={() => removeChild(child.id)} />
                             )}
@@ -539,7 +538,7 @@ export function VisualQueryBuilder({ onQuery, json }: Props) {
                     Pick any key — primitive, object, or array. Filters only apply to arrays of objects.
                 </div>
                 <PathBreadcrumbPicker json={json} value={targetPath}
-                    onChange={(newPath, _steps) => { setTargetPath(newPath); setRootGroup({ id: newId(), kind: "group", logic: "AND", children: [] }); }} />
+                    onChange={(newPath) => { setTargetPath(newPath); setRootGroup({ id: newId(), kind: "group", logic: "AND", children: [] }); }} />
 
                 {hasTarget && (
                     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -583,12 +582,12 @@ export function VisualQueryBuilder({ onQuery, json }: Props) {
             {/* Actions */}
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={() => onQuery(query)} disabled={!hasTarget}
-                    style={{ padding: "9px 22px", background: !hasTarget ? "var(--surface)" : "var(--accent)", border: !hasTarget ? "1px solid var(--border)" : "none", borderRadius: 7, color: !hasTarget ? "var(--text-faint)" : "#ffffff", cursor: !hasTarget ? "not-allowed" : "pointer", fontFamily: "monospace", fontSize: "0.93em", fontWeight: 600 }}>
+                    style={{ padding: "9px 22px", background: !hasTarget ? "var(--surface)" : "var(--accent)", border: !hasTarget ? "1px solid var(--border)" : "none", borderRadius: "var(--radius-md)", color: !hasTarget ? "var(--text-faint)" : "#ffffff", cursor: !hasTarget ? "not-allowed" : "pointer", fontFamily: "monospace", fontSize: "0.93em", fontWeight: 600, boxShadow: hasTarget ? "var(--shadow-button)" : "none" }}>
                     {targetIsPrimitive ? "Fetch Value →" : targetIsObj ? "Fetch Object →" : "Run Filter →"}
                 </button>
                 {hasConditions && (
                     <button onClick={() => setRootGroup({ id: newId(), kind: "group", logic: "AND", children: [] })}
-                        style={{ padding: "9px 14px", background: "none", border: "1px solid var(--danger-border)", borderRadius: 7, color: "var(--btn-danger)", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em" }}>
+                        style={{ padding: "9px 14px", background: "none", border: "1px solid var(--danger-border)", borderRadius: "var(--radius-md)", color: "var(--btn-danger)", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em" }}>
                         Reset
                     </button>
                 )}

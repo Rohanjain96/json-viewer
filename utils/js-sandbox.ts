@@ -75,8 +75,19 @@ const HELPERS = `
 `;
 
 function detectMode(code: string): "per-item" | "whole" {
-  // if references `data` explicitly → whole array mode
-  if (/\bdata\b/.test(code)) return "whole";
+  // "whole" mode triggers when `data` is used as the bare whole-array
+  // identifier (e.g. `data.map(...)`, `sumBy(data, 'x')`). It must NOT trigger
+  // when `data` is merely the name of a per-item field being accessed off `$`
+  // (`$.data`, `$['data']`) — that's a property, not the array reference,
+  // and building the function with a `data` parameter in that case leaves
+  // `$` undefined for the rest of the expression.
+  const bareData = /\bdata\b/g;
+  let match: RegExpExecArray | null;
+  while ((match = bareData.exec(code))) {
+    const before = code.slice(0, match.index);
+    if (/[.[]\s*['"]?$/.test(before)) continue; // preceded by `.` or `[` — property access, not the array itself
+    return "whole";
+  }
   return "per-item";
 }
 

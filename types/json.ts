@@ -12,3 +12,9 @@ export type JSONPathResult = {
   value: unknown;
   path: string;
 };
+
+export interface ApplyHistoryEntry {
+  value: JSONValue;
+  timestamp: number;
+  label: string;
+}

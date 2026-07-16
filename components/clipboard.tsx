@@ -1,12 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { registerCopyModal } from "@/components/tree-node";
 import { stringifyAsync } from "@/utils/copy-async";
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 let _showCopyModal: ((text: string) => void) | null = null;
 
-export function registerCopyModalHandler(fn: (text: string) => void) {
+export function registerCopyModal(fn: (text: string) => void) {
     _showCopyModal = fn;
 }
 
@@ -64,7 +63,7 @@ function CopyModal({ text, onClose }: { text: string; onClose: () => void }) {
         >
             <div
                 onClick={e => e.stopPropagation()}
-                style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 16px 48px #000a" }}
+                style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: 24, width: "100%", maxWidth: 520, boxShadow: "var(--shadow-lg)" }}
             >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                     <span style={{ color: "var(--text-dim)", fontFamily: "monospace", fontSize: "0.93em" }}>
@@ -93,13 +92,8 @@ export function useCopyModal() {
     const [modalText, setModalText] = useState<string | null>(null);
 
     useEffect(() => {
-        // register both — tree-node uses registerCopyModal, direct calls use registerCopyModalHandler
         registerCopyModal(setModalText);
-        registerCopyModalHandler(setModalText);
-        return () => {
-            registerCopyModal(() => { });
-            registerCopyModalHandler(() => { });
-        };
+        return () => registerCopyModal(() => { });
     }, []);
 
     return modalText

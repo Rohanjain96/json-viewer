@@ -43,6 +43,11 @@ export function QueryBar({ query, setQuery, onRun, onClear, suggestions, acActiv
                             onKeyDown={handleKeyDown}
                             placeholder="Enter JSONPath e.g. $.store.orders[*].status"
                             className="mono"
+                            role="combobox"
+                            aria-autocomplete="list"
+                            aria-expanded={showDropdown}
+                            aria-controls="query-suggestions-listbox"
+                            aria-activedescendant={showDropdown && acIndex >= 0 ? `query-suggestion-${acIndex}` : undefined}
                             style={{
                                 width: "100%", background: "var(--input-bg)",
                                 border: `1.5px solid ${showDropdown ? "var(--accent)" : "var(--border)"}`,
@@ -64,14 +69,15 @@ export function QueryBar({ query, setQuery, onRun, onClear, suggestions, acActiv
                     </div>
 
                     {showDropdown && (
-                        <div className="card" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 300, borderTop: "none", borderRadius: "0 0 var(--radius-md) var(--radius-md)", boxShadow: "var(--shadow-md)", overflow: "hidden", animation: "fadeSlideUp 0.12s var(--ease-out)" }}>
+                        <div className="card" id="query-suggestions-listbox" role="listbox" style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 300, borderTop: "none", borderRadius: "0 0 var(--radius-md) var(--radius-md)", boxShadow: "var(--shadow-md)", overflow: "hidden", animation: "fadeSlideUp 0.12s var(--ease-out)" }}>
                             {suggestions.map((s, i) => {
                                 const isSelected = i === acIndex;
                                 const typed = s.slice(0, query.length);
                                 const rest = s.slice(query.length);
                                 return (
-                                    <div key={s} onMouseDown={() => pickSuggestion(s)} onMouseEnter={() => setAcIndex(i)}
-                                        style={{ padding: "8px 12px", cursor: "pointer", background: isSelected ? "var(--accent-bg)" : "transparent", borderLeft: `2px solid ${isSelected ? "var(--accent)" : "transparent"}`, display: "flex", alignItems: "center", gap: 6 }}>
+                                    <div key={s} id={`query-suggestion-${i}`} role="option" aria-selected={isSelected}
+                                        onMouseDown={() => pickSuggestion(s)} onMouseEnter={() => setAcIndex(i)}
+                                        style={{ padding: "8px 12px", cursor: "pointer", background: isSelected ? "var(--accent-bg)" : "transparent", display: "flex", alignItems: "center", gap: 6 }}>
                                         <span className="mono" style={{ fontSize: "0.86em", flex: 1 }}>
                                             <span style={{ color: "var(--text-faint)" }}>{typed}</span>
                                             <span style={{ color: "var(--text)", fontWeight: 600 }}>{rest}</span>
@@ -89,7 +95,7 @@ export function QueryBar({ query, setQuery, onRun, onClear, suggestions, acActiv
             </div>
 
             <button onClick={onRun}
-                style={{ flex: isMobile ? 1 : undefined, padding: "9px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#ffffff", cursor: "pointer", fontSize: "0.89em", whiteSpace: "nowrap", fontWeight: 600, boxShadow: "0 1px 2px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06) inset" }}
+                style={{ flex: isMobile ? 1 : undefined, padding: "9px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#ffffff", cursor: "pointer", fontSize: "0.89em", whiteSpace: "nowrap", fontWeight: 600, boxShadow: "var(--shadow-button)" }}
                 onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
                 onMouseLeave={e => e.currentTarget.style.background = "var(--accent-strong)"}>
                 Run ▶

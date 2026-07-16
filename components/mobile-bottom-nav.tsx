@@ -6,7 +6,7 @@ interface Props { tabs: Tab[]; activeTab: string; onSwitchTab: (id: string) => v
 
 export function MobileBottomNav({ tabs, activeTab, onSwitchTab }: Props) {
     return (
-        <div style={{ background: "var(--panel)", borderTop: "1px solid var(--border)", display: "flex", flexShrink: 0, boxShadow: "0 -4px 16px rgba(0,0,0,0.16)" }}>
+        <div style={{ background: "var(--panel)", borderTop: "1px solid var(--border)", display: "flex", flexShrink: 0, boxShadow: "0 -4px 16px rgba(0,0,0,0.18)" }}>
             {tabs.map(t => {
                 const isActive = activeTab === t.id;
                 return (

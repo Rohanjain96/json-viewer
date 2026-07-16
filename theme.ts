@@ -53,20 +53,20 @@ interface ThemeTokens {
 
 export const THEMES: Record<string, ThemeTokens> = {
   Midnight: {
-    bg: "#08090c",
-    bgElevated: "#0d0f14",
-    panel: "#101218",
-    surface: "#161922",
-    surfaceHover: "#1d212b",
-    overlay: "rgba(5,6,9,0.75)",
-    border: "#23262f",
-    borderFaint: "#191c24",
-    borderStrong: "#31353f",
-    text: "#eceef1",
-    textDim: "#9aa0ac",
-    textFaint: "#5f6672",
-    inputBg: "#0b0c10",
-    inputColor: "#eceef1",
+    bg: "#0c0b13",
+    bgElevated: "#121019",
+    panel: "#15131e",
+    surface: "#1c1927",
+    surfaceHover: "#252230",
+    overlay: "rgba(10,8,16,0.75)",
+    border: "#2b2736",
+    borderFaint: "#1f1c29",
+    borderStrong: "#3c3749",
+    text: "#f0edf5",
+    textDim: "#a8a2b8",
+    textFaint: "#6d6780",
+    inputBg: "#100e17",
+    inputColor: "#f0edf5",
     accent: "#818cf8",
     accentStrong: "#6366f1",
     accentBg: "rgba(129,140,248,0.12)",
@@ -148,7 +148,11 @@ export function buildThemeStyle(t: ThemeTokens, fontSize: string) {
       --shadow-sm: 0 1px 2px rgba(0,0,0,0.18);
       --shadow-md: 0 10px 28px rgba(0,0,0,0.30), 0 2px 6px rgba(0,0,0,0.18);
       --shadow-lg: 0 24px 64px rgba(0,0,0,0.38);
+      --shadow-button: 0 1px 2px rgba(0,0,0,0.2), 0 0 0 1px rgba(255,255,255,0.06) inset;
       --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+      --sidebar-width: 216px;
+      --z-dropdown: 300; --z-sticky: 20; --z-overlay-backdrop: 380; --z-overlay: 400; --z-toast: 350;
 
       font-size: var(--text-base);
     }
@@ -180,11 +184,12 @@ export function buildThemeStyle(t: ThemeTokens, fontSize: string) {
     button { transition: background 0.15s var(--ease-out), border-color 0.15s var(--ease-out), color 0.15s var(--ease-out), transform 0.1s var(--ease-out); }
     button:active { transform: scale(0.98); }
 
-    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible {
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible,
+    [role="treeitem"]:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 1px;
     }
-    input::placeholder, textarea::placeholder { color: var(--text-faint); }
+    input::placeholder, textarea::placeholder { color: var(--text-dim); }
 
     .tree-row { transition: background 0.12s var(--ease-out); border-radius: var(--radius-sm); }
     .tree-row:hover { background: var(--surface); }
@@ -194,6 +199,33 @@ export function buildThemeStyle(t: ThemeTokens, fontSize: string) {
       border: 1px solid var(--border);
       border-radius: var(--radius-md);
       box-shadow: var(--shadow-sm);
+    }
+
+    .page-heading {
+      font-family: var(--font-display);
+      font-size: 1.375rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--text);
+      margin: 0 0 3px;
+      text-wrap: balance;
+    }
+
+    .page-subheading {
+      font-family: var(--font-ui);
+      font-size: var(--text-sm);
+      color: var(--text-dim);
+      font-weight: 400;
+      margin: 0;
+    }
+
+    .panel-label {
+      font-family: var(--font-ui);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-dim);
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }

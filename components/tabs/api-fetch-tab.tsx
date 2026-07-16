@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { JSONValue } from "@/types/json";
+import { formatSize } from "@/utils/format-size";
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 type AuthType = "none" | "bearer" | "basic" | "apikey" | "cookie";
@@ -35,12 +36,6 @@ function buildUrl(base: string, params: Param[]): string {
     if (!active.length) return base;
     const qs = active.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join("&");
     return `${base}${base.includes("?") ? "&" : "?"}${qs}`;
-}
-
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 function statusColor(s: number) {
@@ -98,6 +93,32 @@ const iStyle: React.CSSProperties = {
     color: "var(--input-color)", fontFamily: "var(--font-mono)",
     fontSize: "0.85em", outline: "none", transition: "border-color 0.15s var(--ease-out)",
 };
+
+function SecretInput({ value, onChange, placeholder, style }: { value: string; onChange: (v: string) => void; placeholder?: string; style: React.CSSProperties }) {
+    const [visible, setVisible] = useState(false);
+    return (
+        <div style={{ position: "relative" }}>
+            <input value={value} onChange={e => onChange(e.target.value)} type={visible ? "text" : "password"} placeholder={placeholder}
+                style={{ ...style, paddingRight: 32 }} />
+            <button type="button" onClick={() => setVisible(v => !v)} title={visible ? "Hide value" : "Show value"}
+                style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--text-faint)", cursor: "pointer", padding: "4px 6px", display: "flex", alignItems: "center" }}
+                onMouseEnter={e => (e.currentTarget.style.color = "var(--text)")}
+                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-faint)")}>
+                {visible ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a18.5 18.5 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                    </svg>
+                )}
+            </button>
+        </div>
+    );
+}
 
 function Section({ title, children, defaultOpen = true }: { title: string; children: React.ReactNode; defaultOpen?: boolean; }) {
     const [open, setOpen] = useState(defaultOpen);
@@ -237,7 +258,7 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                     </button>
                 ) : (
                     <button onClick={send}
-                        style={{ padding: "9px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#fff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, flexShrink: 0, boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }}
+                        style={{ padding: "9px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#fff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, flexShrink: 0, boxShadow: "var(--shadow-button)" }}
                         onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
                         onMouseLeave={e => e.currentTarget.style.background = "var(--accent-strong)"}>
                         Send ▶
@@ -285,20 +306,20 @@ export function ApiFetchTab({ onLoadToImport }: Props) {
                     {authType === "bearer" && (
                         <div>
                             <label style={labelStyle}>Token</label>
-                            <input value={bearerToken} onChange={e => setBearerToken(e.target.value)} type="password" placeholder="eyJhbGci..."
+                            <SecretInput value={bearerToken} onChange={setBearerToken} placeholder="eyJhbGci..."
                                 style={{ ...iStyle, width: "100%", boxSizing: "border-box" }} />
                         </div>
                     )}
                     {authType === "basic" && (
                         <div style={{ display: "flex", gap: 8 }}>
                             <div style={{ flex: 1 }}><label style={labelStyle}>Username</label><input value={basicUser} onChange={e => setBasicUser(e.target.value)} placeholder="username" style={iStyle} /></div>
-                            <div style={{ flex: 1 }}><label style={labelStyle}>Password</label><input value={basicPass} onChange={e => setBasicPass(e.target.value)} type="password" placeholder="password" style={iStyle} /></div>
+                            <div style={{ flex: 1 }}><label style={labelStyle}>Password</label><SecretInput value={basicPass} onChange={setBasicPass} placeholder="password" style={iStyle} /></div>
                         </div>
                     )}
                     {authType === "apikey" && (
                         <div style={{ display: "flex", gap: 8 }}>
                             <div style={{ flex: 1 }}><label style={labelStyle}>Header Name</label><input value={apiKeyName} onChange={e => setApiKeyName(e.target.value)} placeholder="X-API-Key" style={iStyle} /></div>
-                            <div style={{ flex: 2 }}><label style={labelStyle}>Value</label><input value={apiKeyValue} onChange={e => setApiKeyValue(e.target.value)} type="password" placeholder="your-api-key" style={iStyle} /></div>
+                            <div style={{ flex: 2 }}><label style={labelStyle}>Value</label><SecretInput value={apiKeyValue} onChange={setApiKeyValue} placeholder="your-api-key" style={iStyle} /></div>
                         </div>
                     )}
                     {authType === "cookie" && (

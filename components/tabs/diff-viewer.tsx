@@ -58,7 +58,7 @@ export function DiffViewer() {
 
             <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
                 <button onClick={runDiff}
-                    style={{ padding: "9px 24px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#ffffff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }}
+                    style={{ padding: "9px 24px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#ffffff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, boxShadow: "var(--shadow-button)" }}
                     onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
                     onMouseLeave={e => e.currentTarget.style.background = "var(--accent-strong)"}>
                     Compare →
@@ -92,7 +92,7 @@ export function DiffViewer() {
 
                     <div style={{ maxHeight: 360, overflowY: "auto", padding: "8px 0" }}>
                         {diffs.map((d, i) => (
-                            <div key={i} className="mono" style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "7px 15px", fontSize: "0.86em", background: diffBg[d.type], borderLeft: `3px solid ${diffClr[d.type]}`, marginBottom: 2 }}>
+                            <div key={i} className="mono" style={{ display: "flex", gap: 10, alignItems: "baseline", padding: "7px 15px", fontSize: "0.86em", background: diffBg[d.type], borderRadius: "var(--radius-sm)", marginBottom: 2 }}>
                                 <span style={{ color: diffClr[d.type], fontWeight: 700, flexShrink: 0, width: 14 }}>{diffIcon[d.type]}</span>
                                 <span style={{ color: "var(--node-key)", flexShrink: 0, minWidth: 80 }}>{d.path || "(root)"}</span>
                                 <span style={{ color: "var(--text-dim)", wordBreak: "break-all" }}>

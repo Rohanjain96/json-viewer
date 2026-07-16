@@ -1,66 +1,13 @@
 "use client";
-import { useRef, useState, useMemo, useCallback } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { JSONValue } from "@/types/json";
-import { runSandbox, SandboxResult } from "@/utils/js-sandbox";
+import { SandboxResult } from "@/utils/js-sandbox";
+import { runSandboxAsync } from "@/utils/sandbox-async";
 import { CopyButton } from "@/components/copy-button";
+import { SandboxPalette } from "@/components/tabs/sandbox-palette";
+import { useBreakpoint } from "@/hooks/use-breakpoints";
 
 interface Props { json: JSONValue; }
-
-const SHORTCUT_GROUPS = [
-  {
-    label: "Transform", items: [
-      { label: "pick", snippet: `pick($, ['id', 'title'])` },
-      { label: "omit", snippet: `omit($, ['body'])` },
-      { label: "add field", snippet: `{ ...$, newKey: $.id * 2 }` },
-      { label: "rename key", snippet: `{ ...$, newName: $.title, title: undefined }` },
-      { label: "spread +", snippet: `{ ...$, titleUpper: $.title.toUpperCase() }` },
-    ]
-  },
-  {
-    label: "Filter", items: [
-      { label: "equals", snippet: `$.userId === 1` },
-      { label: "range", snippet: `between($.id, 10, 20)` },
-      { label: "contains", snippet: `$.title.includes('dolor')` },
-      { label: "like", snippet: `like($.title, '%dolor%')` },
-      { label: "in list", snippet: `inList($.userId, [1, 2, 3])` },
-      { label: "is null", snippet: `isNull($.field)` },
-      { label: "not null", snippet: `notNull($.field)` },
-    ]
-  },
-  {
-    label: "Aggregate (data)", items: [
-      { label: "count", snippet: `count(data)` },
-      { label: "count if", snippet: `count(data, $ => $.userId === 1)` },
-      { label: "sum", snippet: `sum(data, 'id')` },
-      { label: "avg", snippet: `avg(data, 'id')` },
-      { label: "min", snippet: `min(data, 'id')` },
-      { label: "max", snippet: `max(data, 'id')` },
-      { label: "stats", snippet: `stats(data, 'id')` },
-    ]
-  },
-  {
-    label: "Group / Sort", items: [
-      { label: "groupBy", snippet: `groupBy(data, 'userId')` },
-      { label: "countBy", snippet: `countBy(data, 'userId')` },
-      { label: "sumBy", snippet: `sumBy(data, 'userId', 'id')` },
-      { label: "orderBy ↑", snippet: `orderBy(data, 'id', 'asc')` },
-      { label: "orderBy ↓", snippet: `orderBy(data, 'id', 'desc')` },
-      { label: "limit", snippet: `limit(data, 10)` },
-      { label: "skip", snippet: `skip(data, 5)` },
-    ]
-  },
-  {
-    label: "Array ops (data)", items: [
-      { label: "pluck", snippet: `pluck(data, 'title')` },
-      { label: "uniq", snippet: `uniq(data, 'userId')` },
-      { label: "flatten", snippet: `flatten(data)` },
-      { label: "chunk", snippet: `chunk(data, 10)` },
-      { label: "null rows", snippet: `nullRows(data)` },
-      { label: "missing", snippet: `missingField(data, 'title')` },
-      { label: "pivot", snippet: `pivot(data, 'userId', 'id', 'title')` },
-    ]
-  },
-];
 
 const MODE_PILL: Record<string, { bg: string; color: string; label: string }> = {
   transform: { bg: "var(--accent-bg)", color: "var(--accent)", label: "TRANSFORM" },
@@ -69,17 +16,6 @@ const MODE_PILL: Record<string, { bg: string; color: string; label: string }> = 
   aggregate: { bg: "var(--surface)", color: "var(--node-num)", label: "AGGREGATE" },
   raw: { bg: "var(--surface)", color: "var(--text-dim)", label: "VALUE" },
 };
-
-const EXAMPLES = [
-  { label: "Posts by user 1", code: `$.userId === 1` },
-  { label: "Pick id + title", code: `pick($, ['id', 'title'])` },
-  { label: "Add title length", code: `{ ...$, titleLen: $.title.length }` },
-  { label: "Count per user", code: `countBy(data, 'userId')` },
-  { label: "Top 5 by id desc", code: `limit(orderBy(data, 'id', 'desc'), 5)` },
-  { label: "Stats on id", code: `stats(data, 'id')` },
-  { label: "Titles containing dolor", code: `like($.title, '%dolor%')` },
-  { label: "All unique userIds", code: `uniq(pluck(data, 'userId'))` },
-];
 
 // ── Field extraction for autocomplete ───────────────────────────────────────
 function extractFieldPaths(sample: unknown, prefix = "", depth = 0): string[] {
@@ -103,10 +39,11 @@ const BUILTIN_FNS = [
 function EditorAutocomplete({ suggestions, index, onPick }: { suggestions: string[]; index: number; onPick: (s: string) => void; }) {
   if (!suggestions.length) return null;
   return (
-    <div className="card" style={{ position: "absolute", bottom: "100%", left: 12, marginBottom: 4, minWidth: 200, maxWidth: 320, zIndex: 50, boxShadow: "var(--shadow-md)", borderRadius: "var(--radius-md)", overflow: "hidden", animation: "fadeSlideUp 0.1s var(--ease-out)" }}>
+    <div className="card" id="sandbox-field-listbox" role="listbox" style={{ position: "absolute", bottom: "100%", left: 12, marginBottom: 4, minWidth: 200, maxWidth: 320, zIndex: 50, boxShadow: "var(--shadow-md)", borderRadius: "var(--radius-md)", overflow: "hidden", animation: "fadeSlideUp 0.1s var(--ease-out)" }}>
       {suggestions.slice(0, 8).map((s, i) => (
-        <div key={s} onMouseDown={() => onPick(s)}
-          style={{ padding: "6px 11px", cursor: "pointer", background: i === index ? "var(--accent-bg)" : "transparent", borderLeft: `2px solid ${i === index ? "var(--accent)" : "transparent"}`, fontSize: "0.85em", color: i === index ? "var(--text)" : "var(--text-dim)" }}
+        <div key={s} id={`sandbox-field-option-${i}`} role="option" aria-selected={i === index}
+          onMouseDown={() => onPick(s)}
+          style={{ padding: "6px 11px", cursor: "pointer", background: i === index ? "var(--accent-bg)" : "transparent", fontSize: "0.85em", color: i === index ? "var(--text)" : "var(--text-dim)" }}
           className="mono">
           {s}
         </div>
@@ -116,11 +53,12 @@ function EditorAutocomplete({ suggestions, index, onPick }: { suggestions: strin
 }
 
 export function JsSandboxTab({ json }: Props) {
+  const { isMobile } = useBreakpoint();
   const [code, setCode] = useState("");
   const [result, setResult] = useState<SandboxResult | null>(null);
   const [resultView, setResultView] = useState<"table" | "json">("table");
-  const [activeGroup, setActiveGroup] = useState(0);
-  const [showExamples, setShowExamples] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [running, setRunning] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // ac state
@@ -185,11 +123,27 @@ export function JsSandboxTab({ json }: Props) {
     });
   };
 
-  const run = () => {
-    if (!code.trim()) return;
+  const run = async () => {
+    if (!code.trim() || running) return;
     setAcOpen(false);
-    setResult(runSandbox(code, json));
+    setRunning(true);
+    const res = await runSandboxAsync(code, json);
+    setResult(res);
+    setRunning(false);
   };
+
+  // Ctrl/Cmd+K opens the snippet palette. Scoped to this component's own
+  // lifecycle — the tab unmounts when inactive, so this never fires elsewhere.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const el = e.target;
@@ -223,46 +177,21 @@ export function JsSandboxTab({ json }: Props) {
           <span style={{ color: "var(--node-bool)" }}>boolean</span> → filter &nbsp;·&nbsp;
           <span style={{ color: "var(--node-str)" }}>object</span> → transform
         </span>
-        <button onClick={() => setShowExamples(s => !s)}
-          style={{ marginLeft: "auto", padding: "4px 12px", background: showExamples ? "var(--accent-bg)" : "var(--surface)", border: `1px solid ${showExamples ? "var(--accent-border)" : "var(--border)"}`, borderRadius: "var(--radius-md)", color: showExamples ? "var(--accent)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.8em", fontWeight: 500 }}>
-          {showExamples ? "▾ Examples" : "▸ Examples"}
+        <button onClick={() => setPaletteOpen(true)}
+          style={{ marginLeft: "auto", padding: "4px 12px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-faint)", cursor: "pointer", fontSize: "0.8em", fontWeight: 500, display: "inline-flex", alignItems: "center", gap: 6 }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.color = "var(--text)"; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-faint)"; }}>
+          Snippets &amp; Examples
+          <span className="mono" style={{ fontSize: "0.9em", color: "var(--text-faint)", background: "var(--panel)", border: "1px solid var(--border-faint)", borderRadius: "var(--radius-sm)", padding: "0 5px" }}>⌘K</span>
         </button>
       </div>
 
-      {showExamples && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "10px 12px", background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-faint)" }}>
-          {EXAMPLES.map(ex => (
-            <button key={ex.label} onClick={() => { setCode(ex.code); setShowExamples(false); requestAnimationFrame(() => textareaRef.current?.focus()); }}
-              style={{ padding: "4px 11px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-md)", color: "var(--text-dim)", cursor: "pointer", fontSize: "0.8em" }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)"; }}>
-              {ex.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, background: "var(--surface)", borderRadius: "var(--radius-md)", border: "1px solid var(--border-faint)", padding: "8px 9px" }}>
-        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {SHORTCUT_GROUPS.map((g, i) => (
-            <button key={g.label} onClick={() => setActiveGroup(i)}
-              style={{ padding: "3px 10px", background: activeGroup === i ? "var(--accent-bg)" : "none", border: activeGroup === i ? "1px solid var(--accent-border)" : "1px solid transparent", borderRadius: "var(--radius-sm)", color: activeGroup === i ? "var(--accent)" : "var(--text-faint)", cursor: "pointer", fontSize: "0.76em", fontWeight: activeGroup === i ? 600 : 500 }}>
-              {g.label}
-            </button>
-          ))}
-        </div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {SHORTCUT_GROUPS[activeGroup].items.map(s => (
-            <button key={s.label} onClick={() => insertSnippet(s.snippet)}
-              style={{ padding: "4px 10px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius-sm)", color: "var(--text-dim)", cursor: "pointer", fontSize: "0.8em" }}
-              className="mono"
-              onMouseEnter={e => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.color = "var(--text-dim)"; }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SandboxPalette
+        open={paletteOpen}
+        isMobile={isMobile}
+        onClose={() => setPaletteOpen(false)}
+        onSelect={insertSnippet}
+      />
 
       <div style={{ position: "relative" }}>
         <span className="mono" style={{ position: "absolute", top: 12, left: 13, color: "var(--accent)", fontSize: "0.86em", pointerEvents: "none", userSelect: "none", zIndex: 1, fontWeight: 600 }}>
@@ -278,6 +207,11 @@ export function JsSandboxTab({ json }: Props) {
           spellCheck={false}
           placeholder={`// per-item transform:\n{ ...$, titleLen: $.title.length }\n\n// filter:\n$.userId === 1 && $.id > 5\n\n// whole-array aggregate:\ncountBy(data, 'userId')`}
           className="mono"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={acOpen && currentSuggestions.length > 0}
+          aria-controls="sandbox-field-listbox"
+          aria-activedescendant={acOpen && currentSuggestions.length > 0 ? `sandbox-field-option-${acIndex}` : undefined}
           style={{
             width: "100%", minHeight: 110,
             background: "var(--input-bg)", border: "1px solid var(--border)",
@@ -294,13 +228,18 @@ export function JsSandboxTab({ json }: Props) {
       </div>
 
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <button onClick={run}
-          style={{ padding: "8px 22px", background: "var(--accent-strong)", border: "none", borderRadius: "var(--radius-md)", color: "#fff", cursor: "pointer", fontSize: "0.9em", fontWeight: 600, boxShadow: "0 1px 2px rgba(0,0,0,0.2)" }}
-          onMouseEnter={e => e.currentTarget.style.background = "var(--accent)"}
-          onMouseLeave={e => e.currentTarget.style.background = "var(--accent-strong)"}>
-          Run ▶
+        <button onClick={run} disabled={running}
+          style={{ padding: "8px 22px", background: running ? "var(--surface)" : "var(--accent-strong)", border: running ? "1px solid var(--border)" : "none", borderRadius: "var(--radius-md)", color: running ? "var(--text-faint)" : "#fff", cursor: running ? "wait" : "pointer", fontSize: "0.9em", fontWeight: 600, boxShadow: running ? "none" : "var(--shadow-button)", display: "inline-flex", alignItems: "center", gap: 8 }}
+          onMouseEnter={e => { if (!running) e.currentTarget.style.background = "var(--accent)"; }}
+          onMouseLeave={e => { if (!running) e.currentTarget.style.background = "var(--accent-strong)"; }}>
+          {running ? (
+            <>
+              <span style={{ width: 12, height: 12, border: "2px solid var(--border-strong)", borderTop: "2px solid var(--text-dim)", borderRadius: "50%", animation: "spin 0.6s linear infinite", flexShrink: 0 }} />
+              Running…
+            </>
+          ) : "Run ▶"}
         </button>
-        <span style={{ color: "var(--text-faint)", fontSize: "0.74em" }} className="mono">Ctrl+Enter</span>
+        <span style={{ color: "var(--text-faint)", fontSize: "0.74em" }} className="mono">Ctrl+Enter · runs in your browser, stopped after 4s if it hangs</span>
         {pill && (
           <span style={{ padding: "3px 11px", borderRadius: "var(--radius-full)", background: pill.bg, color: pill.color, fontSize: "0.72em", fontWeight: 700 }} className="mono">
             {pill.label}

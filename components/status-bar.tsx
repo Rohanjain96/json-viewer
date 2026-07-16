@@ -9,7 +9,7 @@ export function StatusBar({ activeTab, selectedNodePath, queryResult }: Props) {
 
     return (
         <div style={{ background: "var(--panel)", borderTop: "1px solid var(--border-faint)", padding: "5px 20px", display: "flex", gap: 20, alignItems: "center", flexShrink: 0, height: 28 }}>
-            <span className={selectedNodePath ? "mono" : ""} style={{ color: "var(--text-faint)", fontSize: "0.76em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <span className={selectedNodePath ? "mono" : ""} style={{ color: "var(--text-dim)", fontSize: "0.76em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {message}
             </span>
             <span className="mono" style={{ color: "var(--accent)", fontSize: "0.76em", marginLeft: "auto", whiteSpace: "nowrap", fontWeight: 600 }}>

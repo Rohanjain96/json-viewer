@@ -9,9 +9,10 @@ import { SettingsPanel } from "@/components/tabs/settings-panel";
 import { VisualQueryBuilder } from "@/components/tabs/visual-query-builder";
 import { buildThemeStyle, DEFAULT_SETTINGS, Settings, THEMES } from "@/theme";
 import { QueryResult } from "@/types/query";
-import { JSONValue } from "@/types/json";
+import { ApplyHistoryEntry, JSONValue } from "@/types/json";
 import { useJsonPathSuggestions } from "@/hooks/use-json-path-suggestions";
 import { TopBar } from "@/components/top-bar";
+import { Sidebar } from "@/components/sidebar";
 import { QueryBar } from "@/components/query-bar";
 import { ResultsPanel } from "@/components/results-panel";
 import { NodeInspector } from "@/components/node-inspector";
@@ -88,20 +89,60 @@ const SettingsIcon = () => (
   </svg>
 );
 
+// Explorer is the anchored primary workspace; the rest are grouped as tools,
+// with Settings pinned separately at the bottom of the Sidebar. Order here also
+// drives the 1-7 keyboard shortcuts (see the global keydown handler below).
 const TABS = [
-  { id: "paste", label: "Import", icon: <UploadIcon /> },
-  { id: "api", label: "API", icon: <ApiIcon /> },
-  { id: "explorer", label: "Explorer", icon: <BracesIcon /> },
-  { id: "diff", label: "Diff", icon: <DiffIcon /> },
-  { id: "builder", label: "Builder", icon: <BuilderIcon /> },
-  { id: "sandbox", label: "JS Query", icon: <SandboxIcon /> },
-  { id: "settings", label: "Settings", icon: <SettingsIcon /> },
+  { id: "explorer", label: "Explorer", icon: <BracesIcon />, group: "primary" as const, shortcut: 1 },
+  { id: "paste", label: "Import", icon: <UploadIcon />, group: "tools" as const, shortcut: 2 },
+  { id: "api", label: "API", icon: <ApiIcon />, group: "tools" as const, shortcut: 3 },
+  { id: "diff", label: "Diff", icon: <DiffIcon />, group: "tools" as const, shortcut: 4 },
+  { id: "builder", label: "Builder", icon: <BuilderIcon />, group: "tools" as const, shortcut: 5 },
+  { id: "sandbox", label: "JS Sandbox", icon: <SandboxIcon />, group: "tools" as const, shortcut: 6 },
+  { id: "settings", label: "Settings", icon: <SettingsIcon />, group: "system" as const, shortcut: 7 },
 ];
+
+// Friendlier page-level copy for each tool, replacing the single uppercase
+// label style that repeated identically across every screen.
+const PAGE_COPY: Record<string, { title: string; subtitle: string }> = {
+  paste: { title: "Import JSON", subtitle: "Paste, drop a file, or load the demo to get started." },
+  api: { title: "API Requests", subtitle: "Fetch from any endpoint — proxied to dodge CORS, or sent straight from your browser." },
+  diff: { title: "Compare JSON", subtitle: "See exactly what changed between two versions." },
+  builder: { title: "Visual Query Builder", subtitle: "Point, click, and filter — no JSONPath syntax required." },
+  sandbox: { title: "JS Sandbox", subtitle: "Write a quick expression to transform, filter, or summarize your data." },
+  settings: { title: "Settings", subtitle: "Tune the theme, density, and defaults to match how you work." },
+};
 
 interface SelectedNode {
   path: string;
   type: string;
   value: unknown;
+}
+
+const APPLY_HISTORY_CAP = 10;
+
+// Cheap shape descriptor for a history entry — avoids JSON.stringify-ing a
+// potentially huge tree just to label a snapshot.
+function describeJson(value: JSONValue): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return `Array · ${value.length} item${value.length === 1 ? "" : "s"}`;
+  if (typeof value === "object") {
+    const n = Object.keys(value).length;
+    return `Object · ${n} key${n === 1 ? "" : "s"}`;
+  }
+  if (typeof value === "string") return `String · ${value.length} chars`;
+  return typeof value;
+}
+
+function PageHeader({ tabId }: { tabId: string }) {
+  const copy = PAGE_COPY[tabId];
+  if (!copy) return null;
+  return (
+    <div style={{ marginBottom: 22 }}>
+      <h1 className="page-heading">{copy.title}</h1>
+      <p className="page-subheading">{copy.subtitle}</p>
+    </div>
+  );
 }
 
 export default function App() {
@@ -148,8 +189,11 @@ export default function App() {
   const dragStartX = useRef(0);
   const dragStartW = useRef(0);
 
-  const pad = isMobile ? 12 : 20;
+  const pad = isMobile ? 16 : 28;
   const theme = THEMES[settings.theme] || THEMES.Dark;
+  const toggleTheme = useCallback(() => {
+    setSettings(s => ({ ...s, theme: s.theme === "Midnight" ? "Paper" : "Midnight" }));
+  }, []);
 
   const [queryRunning, setQueryRunning] = useState(false);
   const latestQueryId = useRef(0);
@@ -169,12 +213,27 @@ export default function App() {
     if (isMobile) setMobilePanel("results");
   }, [query, isMobile]);
 
+  // History for Apply JSON — replacing the working tree is the highest-stakes
+  // action in the app, so the last few states stay recoverable, not just the one before.
+  const [applyHistory, setApplyHistory] = useState<ApplyHistoryEntry[]>([]);
+
   const handleApplyJSON = useCallback((parsed: JSONValue) => {
+    setApplyHistory(h => [
+      { value: jsonRef.current, timestamp: Date.now(), label: describeJson(jsonRef.current) },
+      ...h,
+    ].slice(0, APPLY_HISTORY_CAP));
     jsonRef.current = parsed;
     setQueryResult(null);
     setSelectedNode(null);
     setJsonVersion(v => v + 1);
     setTimeout(() => setActiveTab("explorer"), 50);
+  }, []);
+
+  const handleRestoreApply = useCallback((entry: ApplyHistoryEntry) => {
+    jsonRef.current = entry.value;
+    setQueryResult(null);
+    setSelectedNode(null);
+    setJsonVersion(v => v + 1);
   }, []);
 
   const switchTab = useCallback((tabId: string) => {
@@ -188,6 +247,21 @@ export default function App() {
       setTimeout(() => setIsTransitioning(false), 0);
     }, 0);
   }, [activeTab, startTransition]);
+
+  // 1-7 jump straight to a tab (mirrors the shortcut badges in the Sidebar),
+  // ignored while typing so it never hijacks a digit in the middle of a value.
+  useEffect(() => {
+    if (isMobile) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      const tab = TABS.find(t => String(t.shortcut) === e.key);
+      if (tab) { e.preventDefault(); switchTab(tab.id); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isMobile, switchTab]);
 
   const onDragStart = useCallback((e: React.MouseEvent) => {
     dragging.current = true;
@@ -260,210 +334,211 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jsonVersion, rootVisibleCount, isMobile, settings]);
 
+  const currentLabel = TABS.find(t => t.id === activeTab)?.label ?? "";
+
   return (
-    <div style={{ height: "100vh", background: theme.bg, color: theme.text, fontFamily: "'JetBrains Mono','Fira Code',monospace", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+    <div style={{ height: "100vh", background: theme.bg, color: theme.text, fontFamily: "var(--font-ui)", display: "flex", flexDirection: isMobile ? "column" : "row", overflow: "hidden" }}>
       {copyModal}
       <style>{buildThemeStyle(theme, settings.fontSize)}</style>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      <TopBar
-        tabs={TABS}
-        activeTab={activeTab}
-        isMobile={isMobile}
-        pad={pad}
-        onSwitchTab={switchTab}
-      />
-
-      {activeTab === "explorer" && (
-        <QueryBar
-          query={query}
-          setQuery={setQuery}
-          onRun={runQuery}
-          onClear={() => { setQuery(""); setQueryResult(null); }}
-          suggestions={suggestions}
-          acActive={acActive}
-          acIndex={acIndex}
-          setAcActive={setAcActive}
-          setAcIndex={setAcIndex}
-          isMobile={isMobile}
-          pad={pad}
-        />
+      {!isMobile && (
+        <Sidebar tabs={TABS} activeTab={activeTab} onSwitchTab={switchTab} theme={settings.theme} onToggleTheme={toggleTheme} hasData={jsonVersion > 0} />
       )}
 
-      {isMobile && activeTab === "explorer" && (
-        <div style={{ display: "flex", background: "var(--panel)", borderBottom: "1px solid var(--border-faint)", flexShrink: 0 }}>
-          {[["tree", "{ } Tree"], ["results", "▶ Results"]].map(([id, label]) => (
-            <button key={id} onClick={() => setMobilePanel(id as string)}
-              style={{ flex: 1, padding: "9px", background: "none", border: "none", borderBottom: mobilePanel === id ? "2px solid var(--accent)" : "2px solid transparent", color: mobilePanel === id ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em" }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      )}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
 
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", minHeight: 0, position: "relative" }}>
-
-        {isTransitioning && (
-          <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
-            <div style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
-            <span style={{ color: "var(--text-faint)", fontSize: "0.79em", fontFamily: "monospace" }}>Loading...</span>
-          </div>
-        )}
-
-        {activeTab === "paste" && (
-          <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>
-              Import JSON
-            </div>
-            <PasteTab
-              onApply={handleApplyJSON}
-              getPasteText={getPasteText}
-              setPasteText={setPasteText}
-            />
-          </div>
-        )}
-
-        {activeTab === "api" && (
-          <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-            <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>
-              API Fetch
-            </div>
-            <ApiFetchTab
-              onLoadToImport={(text) => {
-                // Push fetched response text into the shared paste ref, then
-                // switch to Import so the user can edit/fix it before applying.
-                setPasteText(text);
-                switchTab("paste");
-              }}
-            />
-          </div>
-        )}
+        {isMobile && <TopBar pad={pad} currentLabel={currentLabel} theme={settings.theme} onToggleTheme={toggleTheme} />}
 
         {activeTab === "explorer" && (
-          <>
-            {(!isMobile || mobilePanel === "tree") && (
-              <div style={{ width: isMobile ? "100%" : treeWidth, display: "flex", flexDirection: "column", flexShrink: 0, minWidth: isMobile ? "100%" : 200, overflow: "hidden" }}>
-
-                <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
-                  <div style={{ padding: `12px ${pad}px 8px`, color: "var(--text-dim)", fontSize: "0.72em", letterSpacing: 2, flexShrink: 0, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span>JSON TREE</span>
-                    {!isMobile && <span style={{ color: "var(--text-faint)", fontSize: "0.64em" }}>{treeWidth}px ↔</span>}
-                  </div>
-                  <div style={{ padding: `0 ${isMobile ? 8 : 4}px`, flex: 1 }}>
-                    {treeNodes}
-                  </div>
-                </div>
-
-                <QueryExamplesDrawer
-                  open={showExamples}
-                  onToggle={() => setShowExamples(s => !s)}
-                  onSelectExample={q => { setQuery(q); runQuery(q); }}
-                />
-
-                {!isMobile && queryHistory.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--border-faint)", padding: "6px 10px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flexShrink: 0, background: "var(--panel)" }}>
-                    <span style={{ color: "var(--text-faint)", fontSize: "0.64em", letterSpacing: 1.5, fontWeight: 600, fontFamily: "monospace" }}>HISTORY</span>
-                    {queryHistory.map((h, i) => (
-                      <button key={i} onClick={() => { setQuery(h); runQuery(h); }}
-                        style={{ padding: "2px 7px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-dim)", cursor: "pointer", fontSize: "0.64em", fontFamily: "monospace" }}>
-                        {h.length > 22 ? h.slice(0, 22) + "…" : h}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!isMobile && (
-              <div onMouseDown={onDragStart}
-                style={{ width: 6, flexShrink: 0, cursor: "col-resize", background: "linear-gradient(to right, var(--border-faint), var(--border), var(--border-faint))", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", transition: "background 0.15s", position: "relative", zIndex: 10 }}
-                onMouseEnter={e => (e.currentTarget.style.background = "linear-gradient(to right, var(--border), var(--accent), var(--border))")}
-                onMouseLeave={e => (e.currentTarget.style.background = "linear-gradient(to right, var(--border-faint), var(--border), var(--border-faint))")}>
-                <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", gap: 3 }}>
-                  {[0, 1, 2].map(i => <div key={i} style={{ width: 2, height: 2, borderRadius: 1, background: "var(--border)" }} />)}
-                </div>
-              </div>
-            )}
-
-            {(!isMobile || mobilePanel === "results") && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
-                <ResultsPanel
-                  queryResult={queryResult}
-                  queryRunning={queryRunning}
-                  resultView={resultView}
-                  setResultView={setResultView}
-                  settings={settings}
-                />
-                <NodeInspector
-                  selectedNode={selectedNode}
-                  setSelectedNode={setSelectedNode}
-                  isMobile={isMobile}
-                />
-                {isMobile && queryHistory.length > 0 && (
-                  <div style={{ borderTop: "1px solid var(--border-faint)", padding: "8px 12px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
-                    <span style={{ color: "var(--text-faint)", fontSize: "0.72em", letterSpacing: 1.5, fontWeight: 600 }}>HISTORY</span>
-                    {queryHistory.map((h, i) => (
-                      <button key={i} onClick={() => { setQuery(h); runQuery(h); }}
-                        style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-dim)", cursor: "pointer", fontSize: "0.72em", fontFamily: "monospace" }}>
-                        {h.length > 20 ? h.slice(0, 20) + "…" : h}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </>
+          <QueryBar
+            query={query}
+            setQuery={setQuery}
+            onRun={runQuery}
+            onClear={() => { setQuery(""); setQueryResult(null); }}
+            suggestions={suggestions}
+            acActive={acActive}
+            acIndex={acIndex}
+            setAcActive={setAcActive}
+            setAcIndex={setAcIndex}
+            isMobile={isMobile}
+            pad={pad}
+          />
         )}
 
-        {!["paste", "api", "explorer"].includes(activeTab) && (
-          <div style={{ flex: 1, padding: pad, overflowY: "auto", minWidth: 0 }}>
-            {activeTab === "diff" && (
-              <>
-                <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>JSON Diff Viewer</div>
-                <DiffViewer />
-              </>
-            )}
-            {activeTab === "sandbox" && (
-              <>
-                <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>JS Sandbox</div>
-                <JsSandboxTab json={jsonRef.current} />
-              </>
-            )}
-            {activeTab === "builder" && (
-              <>
-                <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>Visual Query Builder</div>
-                <VisualQueryBuilder
-                  key={builderKey}
-                  onQuery={q => { setQuery(q); setActiveTab("explorer"); runQuery(q); }}
-                  json={jsonRef.current}
-                />
-              </>
-            )}
-            {activeTab === "settings" && (
-              <>
-                <div style={{ color: "var(--text-dim)", fontSize: "0.86em", letterSpacing: 1, marginBottom: 16, fontWeight: 700 }}>Settings</div>
-                <SettingsPanel settings={settings} setSettings={setSettings} />
-              </>
-            )}
+        {isMobile && activeTab === "explorer" && (
+          <div style={{ display: "flex", background: "var(--panel)", borderBottom: "1px solid var(--border-faint)", flexShrink: 0 }}>
+            {[["tree", "{ } Tree"], ["results", "▶ Results"]].map(([id, label]) => (
+              <button key={id} onClick={() => setMobilePanel(id as string)}
+                style={{ flex: 1, padding: "9px", background: "none", border: "none", borderBottom: mobilePanel === id ? "2px solid var(--accent)" : "2px solid transparent", color: mobilePanel === id ? "var(--text)" : "var(--text-faint)", cursor: "pointer", fontFamily: "monospace", fontSize: "0.86em" }}>
+                {label}
+              </button>
+            ))}
           </div>
         )}
+
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", minHeight: 0, position: "relative" }}>
+
+          {isTransitioning && (
+            <div style={{ position: "absolute", inset: 0, zIndex: 100, background: "var(--bg)", display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12 }}>
+              <div style={{ width: 24, height: 24, border: "2px solid var(--border)", borderTop: "2px solid var(--accent)", borderRadius: "50%", animation: "spin 0.6s linear infinite" }} />
+              <span style={{ color: "var(--text-faint)", fontSize: "0.79em", fontFamily: "monospace" }}>Loading...</span>
+            </div>
+          )}
+
+          {activeTab === "paste" && (
+            <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+              <PageHeader tabId="paste" />
+              <PasteTab
+                onApply={handleApplyJSON}
+                getPasteText={getPasteText}
+                setPasteText={setPasteText}
+                history={applyHistory}
+                onRestore={handleRestoreApply}
+              />
+            </div>
+          )}
+
+          {activeTab === "api" && (
+            <div style={{ flex: 1, padding: pad, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+              <PageHeader tabId="api" />
+              <ApiFetchTab
+                onLoadToImport={(text) => {
+                  // Push fetched response text into the shared paste ref, then
+                  // switch to Import so the user can edit/fix it before applying.
+                  setPasteText(text);
+                  switchTab("paste");
+                }}
+              />
+            </div>
+          )}
+
+          {activeTab === "explorer" && (
+            <>
+              {(!isMobile || mobilePanel === "tree") && (
+                <div style={{ width: isMobile ? "100%" : treeWidth, display: "flex", flexDirection: "column", flexShrink: 0, minWidth: isMobile ? "100%" : 200, overflow: "hidden" }}>
+
+                  <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+                    <div style={{ padding: `12px ${pad}px 8px`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span className="panel-label">Tree</span>
+                      {!isMobile && <span style={{ color: "var(--text-faint)", fontSize: "0.64em" }}>{treeWidth}px ↔</span>}
+                    </div>
+                    <div role="tree" aria-label="JSON tree" data-tree-root="true" style={{ padding: `0 ${isMobile ? 8 : 4}px`, flex: 1 }}>
+                      {treeNodes}
+                    </div>
+                  </div>
+
+                  <QueryExamplesDrawer
+                    open={showExamples}
+                    onToggle={() => setShowExamples(s => !s)}
+                    onSelectExample={q => { setQuery(q); runQuery(q); }}
+                  />
+
+                  {!isMobile && queryHistory.length > 0 && (
+                    <div style={{ borderTop: "1px solid var(--border-faint)", padding: "6px 10px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flexShrink: 0, background: "var(--panel)" }}>
+                      <span style={{ color: "var(--text-faint)", fontSize: "0.64em", letterSpacing: 1.5, fontWeight: 600, fontFamily: "monospace" }}>HISTORY</span>
+                      {queryHistory.map((h, i) => (
+                        <button key={i} onClick={() => { setQuery(h); runQuery(h); }}
+                          style={{ padding: "2px 7px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-dim)", cursor: "pointer", fontSize: "0.64em", fontFamily: "monospace" }}>
+                          {h.length > 22 ? h.slice(0, 22) + "…" : h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {!isMobile && (
+                <div onMouseDown={onDragStart}
+                  style={{ width: 6, flexShrink: 0, cursor: "col-resize", background: "linear-gradient(to right, var(--border-faint), var(--border), var(--border-faint))", borderLeft: "1px solid var(--border)", borderRight: "1px solid var(--border)", transition: "background 0.15s", position: "relative", zIndex: 10 }}
+                  onMouseEnter={e => (e.currentTarget.style.background = "linear-gradient(to right, var(--border), var(--accent), var(--border))")}
+                  onMouseLeave={e => (e.currentTarget.style.background = "linear-gradient(to right, var(--border-faint), var(--border), var(--border-faint))")}>
+                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", display: "flex", flexDirection: "column", gap: 3 }}>
+                    {[0, 1, 2].map(i => <div key={i} style={{ width: 2, height: 2, borderRadius: 1, background: "var(--border)" }} />)}
+                  </div>
+                </div>
+              )}
+
+              {(!isMobile || mobilePanel === "results") && (
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0 }}>
+                  <ResultsPanel
+                    queryResult={queryResult}
+                    queryRunning={queryRunning}
+                    resultView={resultView}
+                    setResultView={setResultView}
+                    settings={settings}
+                  />
+                  <NodeInspector
+                    selectedNode={selectedNode}
+                    setSelectedNode={setSelectedNode}
+                    isMobile={isMobile}
+                  />
+                  {isMobile && queryHistory.length > 0 && (
+                    <div style={{ borderTop: "1px solid var(--border-faint)", padding: "8px 12px", display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center", flexShrink: 0 }}>
+                      <span style={{ color: "var(--text-faint)", fontSize: "0.72em", letterSpacing: 1.5, fontWeight: 600 }}>HISTORY</span>
+                      {queryHistory.map((h, i) => (
+                        <button key={i} onClick={() => { setQuery(h); runQuery(h); }}
+                          style={{ padding: "4px 8px", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, color: "var(--text-dim)", cursor: "pointer", fontSize: "0.72em", fontFamily: "monospace" }}>
+                          {h.length > 20 ? h.slice(0, 20) + "…" : h}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {!["paste", "api", "explorer"].includes(activeTab) && (
+            <div style={{ flex: 1, padding: pad, overflowY: "auto", minWidth: 0 }}>
+              {activeTab === "diff" && (
+                <>
+                  <PageHeader tabId="diff" />
+                  <DiffViewer />
+                </>
+              )}
+              {activeTab === "sandbox" && (
+                <>
+                  <PageHeader tabId="sandbox" />
+                  <JsSandboxTab json={jsonRef.current} />
+                </>
+              )}
+              {activeTab === "builder" && (
+                <>
+                  <PageHeader tabId="builder" />
+                  <VisualQueryBuilder
+                    key={builderKey}
+                    onQuery={q => { setQuery(q); setActiveTab("explorer"); runQuery(q); }}
+                    json={jsonRef.current}
+                  />
+                </>
+              )}
+              {activeTab === "settings" && (
+                <>
+                  <PageHeader tabId="settings" />
+                  <SettingsPanel settings={settings} setSettings={setSettings} />
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {!isMobile && (
+          <StatusBar
+            activeTab={activeTab}
+            selectedNodePath={selectedNode?.path ?? null}
+            queryResult={queryResult}
+          />
+        )}
+
+        {isMobile && (
+          <MobileBottomNav
+            tabs={TABS}
+            activeTab={activeTab}
+            onSwitchTab={switchTab}
+          />
+        )}
       </div>
-
-      {!isMobile && (
-        <StatusBar
-          activeTab={activeTab}
-          selectedNodePath={selectedNode?.path ?? null}
-          queryResult={queryResult}
-        />
-      )}
-
-      {isMobile && (
-        <MobileBottomNav
-          tabs={TABS}
-          activeTab={activeTab}
-          onSwitchTab={switchTab}
-        />
-      )}
     </div>
   );
 }

@@ -1,42 +1,10 @@
 "use client";
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { JSONValue } from "@/types/json";
 import { CopyIcon } from "@/icons/copy-icon";
 import { CheckIcon } from "@/icons/check-icon";
 import { Settings } from "@/theme";
-
-let _showCopyModal: ((text: string) => void) | null = null;
-
-export function registerCopyModal(fn: (text: string) => void) {
-    _showCopyModal = fn;
-}
-
-function execCommandCopy(text: string): boolean {
-    try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.cssText =
-            "position:fixed;top:0;left:0;width:1px;height:1px;opacity:0.01;border:none;outline:none;box-shadow:none;background:transparent";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        return ok;
-    } catch {
-        return false;
-    }
-}
-
-export function copyToClipboard(text: string) {
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        navigator.clipboard.writeText(text).catch(() => {
-            if (!execCommandCopy(text)) _showCopyModal?.(text);
-        });
-        return;
-    }
-    if (!execCommandCopy(text)) _showCopyModal?.(text);
-}
+import { copyToClipboard } from "@/components/clipboard";
 
 interface NodeClickPayload {
     path: string;
@@ -70,6 +38,7 @@ export const TreeNode = React.memo(function TreeNode({
     const [hovered, setHovered] = useState<boolean>(false);
     const [copiedNode, setCopiedNode] = useState<boolean>(false);
     const [visibleCount, setVisibleCount] = useState(200);
+    const rowRef = useRef<HTMLDivElement>(null);
 
     const isObj = typeof value === "object" && value !== null && !Array.isArray(value);
     const isArr = Array.isArray(value);
@@ -115,20 +84,75 @@ export const TreeNode = React.memo(function TreeNode({
 
     const entries = isComplex ? Object.entries(value as Record<string, JSONValue>) : [];
 
+    const activate = () => {
+        if (isComplex) {
+            if (open) setVisibleCount(200);
+            setOpen(!open);
+        } else {
+            onNodeClick({ path: nodePath, type: value === null ? "null" : typeof value, value });
+        }
+    };
+
+    // Moves focus to the next/previous visible row in document order — a lightweight
+    // roving-tabindex substitute that doesn't require plumbing parent/sibling refs
+    // through the recursive tree.
+    const focusAdjacentRow = (dir: 1 | -1) => {
+        const el = rowRef.current;
+        if (!el) return;
+        const root = el.closest('[data-tree-root="true"]');
+        if (!root) return;
+        const rows = Array.from(root.querySelectorAll<HTMLElement>('[data-tree-row="true"]'));
+        const idx = rows.indexOf(el);
+        if (idx === -1) return;
+        rows[idx + dir]?.focus();
+    };
+
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        switch (e.key) {
+            case "Enter":
+            case " ":
+                e.preventDefault();
+                activate();
+                break;
+            case "ArrowRight":
+                if (isComplex) {
+                    e.preventDefault();
+                    if (!open) setOpen(true);
+                    else focusAdjacentRow(1);
+                }
+                break;
+            case "ArrowLeft":
+                if (isComplex && open) {
+                    e.preventDefault();
+                    setOpen(false);
+                }
+                break;
+            case "ArrowDown":
+                e.preventDefault();
+                focusAdjacentRow(1);
+                break;
+            case "ArrowUp":
+                e.preventDefault();
+                focusAdjacentRow(-1);
+                break;
+        }
+    };
+
     return (
         <div style={{ paddingLeft: depth === 0 ? 0 : 18, borderLeft: depth > 0 ? "1px solid var(--border-faint)" : "none", marginLeft: depth > 0 ? 6 : 0 }}>
             <div
+                ref={rowRef}
                 className="tree-row"
+                role="treeitem"
+                aria-expanded={isComplex ? open : undefined}
+                aria-level={depth + 1}
+                aria-selected={false}
+                tabIndex={0}
+                data-tree-row="true"
                 onMouseEnter={() => setHovered(true)}
                 onMouseLeave={() => setHovered(false)}
-                onClick={() => {
-                    if (isComplex) {
-                        if (open) setVisibleCount(200);
-                        setOpen(!open);
-                    } else {
-                        onNodeClick({ path: nodePath, type: typeof value, value });
-                    }
-                }}
+                onClick={activate}
+                onKeyDown={onKeyDown}
                 style={{
                     display: "flex", alignItems: "center",
                     padding: isMobile ? "7px 8px" : "5px 8px",
@@ -208,7 +232,7 @@ export const TreeNode = React.memo(function TreeNode({
             </div>
 
             {isComplex && open && (
-                <>
+                <div role="group">
                     {entries.slice(0, visibleCount).map(([k, v]) => (
                         <TreeNode
                             key={k}
@@ -240,7 +264,7 @@ export const TreeNode = React.memo(function TreeNode({
                     <div style={{ paddingLeft: 18, color: "var(--text-faint)", fontFamily: "monospace" }}>
                         {isArr ? "]" : "}"}
                     </div>
-                </>
+                </div>
             )}
         </div>
     );
